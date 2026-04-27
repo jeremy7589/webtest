@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Combined Water Data Explorer</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+  <script src="https://js.arcgis.com/4.32/"></script>
+
+  <style>
+    html, body, #viewDiv { 
+      height: 100%; 
+      width: 100%; 
+      margin: 0; 
+      padding: 0; 
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
+    }
+
+    /* Top bar */
+    .topbar { 
+      position: absolute; 
+      top: 10px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      background: #fff; 
+      border-radius: 999px; 
+      box-shadow: 0 6px 18px rgba(0,0,0,.15); 
+      padding: 8px; 
+      display: flex; 
+      align-items: center; 
+      z-index: 1100; 
+    }
+    .segmented { 
+      display: inline-grid; 
+      grid-auto-flow: column; 
+      background: #f1f5f9; 
+      border-radius: 999px; 
+      padding: 4px; 
+    }
+    .segmented button { 
+      border: none; 
+      background: transparent; 
+      padding: 8px 16px; 
+      border-radius: 999px; 
+      cursor: pointer; 
+      font-weight: 600; 
+      color: #334155; 
+      white-space: nowrap;
+    }
+    .segmented button.active { 
+      background: #ffffff; 
+      box-shadow: 0 1px 4px rgba(0,0,0,.12); 
+      color:#0f172a; 
+    }
+
+    /* Bottom controls */
+    #bottomControls { 
+      position: absolute; 
+      bottom: 20px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      background: rgba(255,255,255,.95); 
+      padding: 10px; 
+      z-index: 1050; 
+      display: flex; 
+      gap: 10px; 
+      border-radius: 10px; 
+      box-shadow: 0 6px 18px rgba(0,0,0,.15); 
+    }
+    .esri-button { 
+      cursor: pointer; 
+      padding: 10px 16px; 
+      background-color: #007ac2; 
+      border: none; 
+      border-radius: 8px; 
+      color: #fff; 
+      font-weight: 700; 
+    }
+    .esri-button:disabled { 
+      background: #9aa6b2; 
+      cursor: not-allowed; 
+    }
+
+    /* Right panel */
+    #resultDiv { 
+      position: absolute; 
+      top: 15px; 
+      right: 15px; 
+      background: #fff; 
+      z-index: 100; 
+      box-shadow: 0 4px 16px rgba(0,0,0,.25); 
+      border-radius: 12px; 
+      display: none; 
+    }
+
+    /* Shared stats + list styles */
+    .panel { 
+      width: 450px; 
+      max-height: calc(100vh - 40px); 
+      padding: 18px; 
+      overflow-y: auto; 
+      overflow-x: hidden;
+    }
+    .stats { 
+      display: grid; 
+      grid-template-columns: repeat(3, 1fr); 
+      gap: 10px; 
+      margin-bottom: 16px; 
+      text-align: center; 
+    }
+    .stat-card { 
+      background:#f8fafc; 
+      border:1px solid #e2e8f0; 
+      border-radius: 10px; 
+      padding: 10px; 
+    }
+    .stat-title { 
+      font-size: 12px; 
+      text-transform: uppercase; 
+      color:#6b7280; 
+      font-weight:700; 
+      letter-spacing:.3px; 
+    }
+    .stat-value { 
+      margin-top:6px; 
+      font-weight:800; 
+      font-size:22px; 
+      color:#0ea5e9; 
+    }
+    .stat-unit { 
+      font-size: 12px; 
+      margin-left: 2px; 
+      color:#334155; 
+      font-weight:600; 
+    }
+
+    /* Heading above formation filters */
+    .panel-heading {
+      font-size: 15px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 14px 0 6px 0;
+      padding-left: 2px;
+    }
+
+    .legend-list { 
+      display:flex; 
+      flex-direction: column; 
+      gap: 6px; 
+      margin-bottom: 14px; 
+    }
+    .legend-item { 
+      display:flex; 
+      align-items:center; 
+      justify-content: space-between; 
+      gap:10px; 
+      padding:8px; 
+      border-radius:8px; 
+      cursor:pointer; 
+    }
+    .legend-item:hover { 
+      background:#f1f5f9; 
+    }
+    .legend-left { 
+      display:flex; 
+      align-items:center; 
+      gap:8px; 
+    }
+    .legend-swatch { 
+      width: 12px; 
+      height: 12px; 
+      border-radius: 3px; 
+      border: 1px solid rgba(0,0,0,.15); 
+      flex-shrink: 0; 
+    }
+    .legend-pct { 
+      font-weight: 800; 
+      color:#334155; 
+    }
+
+    .chart { 
+      height: 250px; 
+      position: relative; 
+    }
+    .checksum { 
+      font-size: 12px; 
+      color:#64748b; 
+      margin-top:6px; 
+      text-align:right; 
+    }
+
+    /* Zoom splash */
+    #zoomSplash { 
+      position: absolute; 
+      bottom: 20px; 
+      left: 12px; 
+      background:#fff; 
+      color:#334155; 
+      padding:8px 14px; 
+      border-radius: 999px; 
+      border:2px solid #ef4444; 
+      box-shadow:0 6px 18px rgba(0,0,0,.15); 
+      z-index: 1030; 
+      display:flex; 
+      gap:8px; 
+      align-items:center; 
+      font-weight: 600; 
+      font-size: 14px; 
+    }
+    #zoomSplash.green { 
+      border-color:#22c55e; 
+      color:#16a34a; 
+      background:#dcfce7; 
+    }
+
+    /* Loader */
+    #loader { 
+      display:none; 
+      position:absolute; 
+      top:50%; 
+      left:50%; 
+      transform: translate(-50%, -50%); 
+      z-index:1200; 
+      width: 54px; 
+      height: 54px; 
+      border-radius:50%; 
+      border:6px solid #e5e7eb; 
+      border-top-color:#007ac2; 
+      animation: spin 1s linear infinite; 
+    }
+    @keyframes spin { 
+      to { 
+        transform: translate(-50%, -50%) rotate(360deg); 
+      } 
+    }
+
+    .info-message { 
+      padding: 15px; 
+      text-align: center; 
+      font-weight: bold; 
+      color: #555; 
+    }
+  </style>
+</head>
+<body>
+  <div id="viewDiv"></div>
+  <div class="topbar">
+    <div class="segmented">
+      <button id="btnCSG" class="active">Groundwater extraction by CSG</button>
+      <button id="btnWU">Groundwater use by other users</button>
+    </div>
+  </div>
+  <div id="bottomControls">
+    <button id="polygonBtn" class="esri-button">Draw Polygon</button>
+    <button id="clearBtn" class="esri-button" disabled>Clear</button>
+  </div>
+  <aside id="resultDiv" class="panel"></aside>
+  <div id="zoomSplash">
+    <strong>Zoom:</strong>
+    <span id="zoomMeters">—</span>
+    <span id="zoomHint">Zoom in to see labels</span>
+  </div>
+  <div id="loader"></div>
+
+<script>
+require([
+  "esri/Map", "esri/views/SceneView", "esri/layers/FeatureLayer",
+  "esri/renderers/HeatmapRenderer", "esri/renderers/SimpleRenderer",
+  "esri/widgets/Legend", "esri/widgets/Sketch/SketchViewModel",
+  "esri/layers/GraphicsLayer", "esri/geometry/geometryEngine"
+], function(
+  Map, SceneView, FeatureLayer,
+  HeatmapRenderer, SimpleRenderer,
+  Legend, SketchViewModel,
+  GraphicsLayer, geometryEngine
+){
+  // === Symbology & labels ===
+  const csgHeatmapRenderer = new HeatmapRenderer({
+    field: "SUMVOLUME",
+    colorStops: [
+      { color: "rgba(255,255,255,0)", ratio: 0 },
+      { color: "#e0f7fa", ratio: 0.2 },
+      { color: "#b2ebf2", ratio: 0.4 },
+      { color: "#81d4fa", ratio: 0.6 },
+      { color: "#4fc3f7", ratio: 0.8 },
+      { color: "#29b6f6", ratio: 1 }
+    ],
+    maxDensity: 0.8,
+    legendOptions: { title: " " }
+  });
+
+  const csgCalloutRenderer = new SimpleRenderer({
+    symbol: {
+      type: "point-3d",
+      symbolLayers: [{
+        type: "icon",
+        resource: { primitive: "circle" },
+        material: { color: "#ff8c42" },
+        size: 5
+      }]
+    }
+  });
+
+  const csgLabelingInfo = [{
+    labelPlacement: "above-center",
+    labelExpressionInfo: { expression: "$feature.BORE_NAME" },
+    symbol: {
+      type: "label-3d",
+      symbolLayers: [{
+        type: "text",
+        material: { color: [255, 255, 255, 1] },
+        halo: { color: [0, 0, 0, 0.7], size: 1 },
+        font: { family: "Arial", size: 12, weight: "bold" }
+      }],
+      verticalOffset: { screenLength: 80, maxWorldLength: 200, minWorldLength: 50 },
+      callout: { type: "line", size: 0.5, color: [0, 0, 0, 0.7] }
+    }
+  }];
+
+  const wuHeatmapRenderer = new HeatmapRenderer({
+    field: "ML_Bore",
+    colorStops: [
+      { color: "rgba(230, 245, 255, 0)", ratio: 0 },
+      { color: "rgba(179, 229, 252, 0.7)", ratio: 0.1 },
+      { color: "rgba(66, 165, 245, 0.8)", ratio: 0.4 },
+      { color: "rgba(21, 101, 192, 0.9)", ratio: 0.8 },
+      { color: "rgba(13, 71, 161, 1.0)", ratio: 1.0 }
+    ],
+    maxDensity: 4,
+    minDensity: 0,
+    radius: 12,
+    legendOptions: { title: " " }
+  });
+
+  const wuCalloutRenderer = new SimpleRenderer({
+    symbol: {
+      type: "point-3d",
+      symbolLayers: [{
+        type: "icon",
+        resource: { primitive: "circle" },
+        material: { color: "black" },
+        size: 4
+      }]
+    }
+  });
+
+  const wuLabelingInfo = [{
+    labelPlacement: "above-center",
+    labelExpressionInfo: { expression: "\"RN: \" + $feature.RN" },
+    symbol: {
+      type: "label-3d",
+      symbolLayers: [{
+        type: "text",
+        material: { color: [255, 255, 255, 1] },
+        halo: { color: [0, 0, 0, 0.7], size: 1 },
+        font: { family: "Arial", size: 10, weight: "bold" }
+      }],
+      verticalOffset: { screenLength: 40, maxWorldLength: 200, minWorldLength: 20 },
+      callout: { type: "line", size: 0.5, color: [0,0,0], border: { color: [255,255,255,0.8] } }
+    }
+  }];
+
+  // === Layers ===
+  const csgLayer = new FeatureLayer({
+    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/ArcGIS/rest/services/CSG_prod_and_plan_UWIR2025_3_WFL1/FeatureServer/2",
+    renderer: csgHeatmapRenderer,
+    outFields: ["*"],
+    definitionExpression: "Model_Well_Type = 'Existing'",
+    popupTemplate: {
+      title: "CSG Well Information",
+      content: function (event) {
+        const attrs = event.graphic.attributes;
+        const name = attrs.BORE_NAME || "Unknown";
+
+        // Ann_rate and Current_rate both formatted nicely
+        const ann = attrs.Ann_rate;
+        const curr = attrs.Current_rate;
+
+        const formattedAnn = ann == null || isNaN(ann)
+          ? "—"
+          : Number(ann).toFixed(2);
+
+        const formattedCurr = curr == null || isNaN(curr)
+          ? "—"
+          : Number(curr).toFixed(2);
+
+        return `
+          Well name: ${name}<br>
+          Annual rate since commencement: ${formattedAnn} ML/year<br>
+          Current rate: ${formattedCurr} ML/year
+        `;
+      }
+    }
+  });
+
+  // *** UPDATED LAYER ***
+  const wuLayer = new FeatureLayer({
+    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/Map3_WFL1/FeatureServer/2",
+    renderer: wuHeatmapRenderer,
+    outFields: ["*"],
+    visible: false,
+    popupTemplate: {
+      title: "Water Usage Details",
+      content: `RN: {RN}<br>
+                Bore Status: {BORE_STATUS}<br>
+                Formation: {FORMATION}<br>
+                Total volume per year: {Rate__avg_prev_3yr_} ML/year`
+    }
+  });
+
+  const townsLayer = new FeatureLayer({
+    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/OGIA_Basemap_WFL1/FeatureServer/1",
+    renderer: { 
+      type: "simple",
+      symbol: { 
+        type: "simple-marker",
+        style: "square",
+        size: 8,
+        color: "black",
+        outline: { color: "white", width: 1 }
+      }
+    },
+    labelingInfo: [{
+      labelExpressionInfo: { expression: "$feature.NAME" },
+      symbol: {
+        type: "label-3d",
+        symbolLayers: [{
+          type: "text",
+          material: { color: "black" },
+          halo: { color: "white", size: 1 },
+          font: { family: "Arial", size: 10 }
+        }],
+        callout: { type: "line", size: .5, color: "black" }
+      }
+    }],
+    elevationInfo: { mode: "on-the-ground" }
+  });
+
+  // === Map & View ===
+  const map = new Map({ 
+    basemap: "satellite", 
+    layers: [csgLayer, wuLayer, townsLayer] 
+  });
+
+  const view = new SceneView({ 
+    container: "viewDiv", 
+    map, 
+    camera: { 
+      position: [150.0, -32.0, 400000], 
+      tilt: 55 
+    } 
+  });
+  
+  const legend = new Legend({ 
+    view, 
+    layerInfos: [{ 
+      layer: csgLayer, 
+      title: "CSG Water Production (ML)" 
+    }] 
+  });
+  view.ui.add(legend, "bottom-right");
+
+  // Sketch
+  const sketchLayer = new GraphicsLayer();
+  map.add(sketchLayer);
+
+  const sketchVM = new SketchViewModel({
+    view,
+    layer: sketchLayer,
+    polygonSymbol: { 
+      type: "simple-fill", 
+      color: [0,0,0,.2], 
+      outline: { color: "#2563eb", width: 1.5 } 
+    }
+  });
+
+  // UI state
+  let activeMode = 'CSG';
+  let lastGeom = null;
+  let localCalloutLayer = null;
+
+  // Cache variables for CSG category volumes
+  let csgCategoryVolumes = {}; // {category: volume}
+  let csgVolumeTotal = 0;
+  
+  // Cache variables for WU category volumes
+  let wuCategoryVolumes = {}; // {category: volume}
+  let wuVolumeTotal = 0;
+
+  // refs
+  const loader = document.getElementById('loader');
+  const resultDiv = document.getElementById('resultDiv');
+
+  // Controls
+  document.getElementById("polygonBtn").onclick = () => sketchVM.create("polygon");
+  document.getElementById("clearBtn").onclick = () => clearAll();
+  document.getElementById('btnCSG').onclick = () => setMode('CSG');
+  document.getElementById('btnWU').onclick = () => setMode('WU');
+
+  sketchVM.on("create", (e) => { 
+    if (e.state === "complete") { 
+      lastGeom = e.graphic.geometry; 
+      document.getElementById("clearBtn").disabled = false; 
+      runAnalysis(lastGeom); 
+    } 
+  });
+
+  function clearAll(){ 
+    sketchLayer.removeAll(); 
+    resultDiv.style.display = 'none'; 
+    lastGeom = null; 
+    document.getElementById("clearBtn").disabled = true; 
+  }
+
+  function setMode(mode){
+    if(activeMode === mode) return;
+    const cam = view.camera.clone();
+    activeMode = mode; 
+    const isCSG = activeMode === 'CSG';
+
+    csgLayer.visible = isCSG; 
+    wuLayer.visible = !isCSG;
+
+    legend.layerInfos = [{
+      layer: isCSG ? csgLayer : wuLayer, 
+      title: isCSG ? "CSG Water Production (ML)" : "Water Use Volume (ML)" 
+    }];
+
+    document.getElementById('btnCSG').classList.toggle('active', isCSG);
+    document.getElementById('btnWU').classList.toggle('active', !isCSG);
+
+    view.camera = cam;
+    updateLocalCallouts();
+    if(lastGeom) {
+      runAnalysis(lastGeom); 
+    } else {
+      resultDiv.style.display = 'none';
+    }
+  }
+
+  // === Zoom splash + local callouts ===
+  let lastUpdateCenter = null, lastZoomState = null;
+  view.watch(["scale","center"], () => {
+    const isZoomed = view.scale < 90000; 
+    const zoomMeters = Math.round(view.resolution * view.width);
+    document.getElementById('zoomMeters').textContent = `${(zoomMeters/1000).toFixed(1)} km`;
+
+    const splash = document.getElementById('zoomSplash'); 
+    const hint = document.getElementById('zoomHint');
+
+    splash.classList.toggle('green', isZoomed);
+    hint.textContent = isZoomed 
+      ? (activeMode==='CSG' ? 'Well name labels visible' : 'RN labels visible') 
+      : (activeMode==='CSG' ? 'Zoom in for well names' : 'Zoom in for RNs');
+
+    const moved = lastUpdateCenter 
+      ? geometryEngine.distance(view.center, lastUpdateCenter, 'meters') 
+      : Infinity;
+
+    if (isZoomed && (moved > 9000 || lastZoomState !== isZoomed)) { 
+      updateLocalCallouts(); 
+      lastUpdateCenter = view.center.clone(); 
+    }
+
+    if (!isZoomed && localCalloutLayer) { 
+      map.remove(localCalloutLayer); 
+      localCalloutLayer = null; 
+    }
+    lastZoomState = isZoomed;
+  });
+
+  async function updateLocalCallouts(){
+    try {
+      const layer = activeMode==='CSG' ? csgLayer : wuLayer;
+      const renderer = activeMode==='CSG' ? csgCalloutRenderer : wuCalloutRenderer;
+      const labeling = activeMode==='CSG' ? csgLabelingInfo : wuLabelingInfo;
+
+      const q = layer.createQuery(); 
+      q.geometry = view.center; 
+      q.distance = 9000; 
+      q.units = 'meters';
+
+      const { features } = await layer.queryFeatures(q);
+      if(localCalloutLayer) map.remove(localCalloutLayer);
+
+      if(!features || !features.length){ 
+        localCalloutLayer = null; 
+        return; 
+      }
+
+      localCalloutLayer = new FeatureLayer({
+        source: features, 
+        fields: layer.fields, 
+        objectIdField: layer.objectIdField,
+        geometryType: 'point', 
+        spatialReference: view.spatialReference,
+        elevationInfo: { mode: "relative-to-ground" }, 
+        renderer, 
+        labelingInfo: labeling
+      });
+      map.add(localCalloutLayer);
+    } catch(e){ 
+      console.warn('callouts error', e); 
+    }
+  }
+
+  // === Analysis ===
+  let trendChart = null;
+
+  function showPanel(){ 
+    resultDiv.style.display = 'block'; 
+  }
+
+  function resetPanel(){ 
+    resultDiv.innerHTML = ''; 
+  }
+
+  // Helper: compute average of fixed years 2022, 2023, 2024 from trend
+  function computeThreeYearAvgFromTrendUsingFixedYears(trend) {
+    if (!trend || !trend.labels || !trend.values) return 0;
+
+    // Build lookup {yearString: value}
+    const lookup = {};
+    trend.labels.forEach((label, i) => {
+      lookup[label] = Number(trend.values[i] || 0);
+    });
+
+    const y2022 = lookup["2022"] || 0;
+    const y2023 = lookup["2023"] || 0;
+    const y2024 = lookup["2024"] || 0;
+
+    const avg = (y2022 + y2023 + y2024) / 3;
+    return avg;
+  }
+
+  // === Analysis runner ===
+  async function runAnalysis(geometry){
+    loader.style.display = 'block'; 
+    resetPanel();
+    try {
+      if(activeMode === 'CSG'){
+        const [catAgg, overallBase, trend] = await Promise.all([
+          fetchCSGCategoryVolumes(geometry), 
+          fetchCSGOverallStats(geometry, null),
+          fetchCSGTrend(geometry, null)
+        ]);
+
+        csgCategoryVolumes = catAgg.volumes; 
+        csgVolumeTotal = catAgg.total;      
+
+        const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(trend);
+        const overall = { wells: overallBase.wells, currentRate };
+
+        renderCSGPanel(overall, trend, null);
+      } else {
+        const [catAgg, overall, trend] = await Promise.all([
+          fetchWUCategoryVolumes(geometry),
+          fetchWUOverallStats(geometry, null),
+          fetchWUTrend(geometry, null)
+        ]);
+
+        wuCategoryVolumes = catAgg.volumes;
+        wuVolumeTotal = catAgg.total;
+        
+        renderWUPanel(overall, trend, null);
+      }
+      showPanel();
+    } catch(err){
+      console.error(err);
+      resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>';
+      showPanel();
+    } finally { 
+      loader.style.display = 'none'; 
+    }
+  }
+
+  // --- CSG stats (server-side) ---
+  function makeCSGWhere(selectedCategory){
+    if(!selectedCategory) return null;
+    const safe = String(selectedCategory).replace(/'/g, "''");
+    return `OGIA_PROD_ = '${safe}'`;
+  }
+
+  // Group by category label (OGIA_PROD_) and sum SUMVOLUME
+  async function fetchCSGCategoryVolumes(geometry){
+    const q = csgLayer.createQuery();
+    q.geometry = geometry;
+    q.returnGeometry = false;
+    q.groupByFieldsForStatistics = ["OGIA_PROD_"];
+    q.outStatistics = [
+      { statisticType: "sum", onStatisticField: "SUMVOLUME", outStatisticFieldName: "total_volume" }
+    ];
+    const { features } = await csgLayer.queryFeatures(q);
+    const volumes = {}; 
+    let total = 0;
+    (features || []).forEach(f=>{
+      const k = f.attributes.OGIA_PROD_ || 'Unknown';
+      const v = Number(f.attributes.total_volume || 0);
+      volumes[k] = (volumes[k] || 0) + v;
+      total += v;
+    });
+    return { volumes, total };
+  }
+
+  // Only returns wells count; current rate comes from trend
+  async function fetchCSGOverallStats(geometry, where){
+    const q = csgLayer.createQuery();
+    q.geometry = geometry; 
+    q.returnGeometry = false; 
+    if(where) q.where = where;
+
+    const outStats = [
+      { statisticType: "count", onStatisticField: "OBJECTID", outStatisticFieldName: "well_count" }
+    ];
+    q.outStatistics = outStats;
+
+    const { features } = await csgLayer.queryFeatures(q);
+    const a = features && features[0] ? features[0].attributes : {};
+    const wells = a.well_count || 0;
+
+    return { wells };
+  }
+
+  async function fetchCSGTrend(geometry, where){
+    const q = csgLayer.createQuery(); 
+    q.geometry = geometry; 
+    q.returnGeometry = false; 
+    if(where) q.where = where;
+
+    const years = [
+      1995,1996,1997,1998,1999,
+      2000,2001,2002,2003,2004,
+      2005,2006,2007,2008,2009,
+      2010,2011,2012,2013,2014,
+      2015,2016,2017,2018,2019,
+      2020,2021,2022,2023,2024
+    ];
+    q.outStatistics = years.map(y => ({
+      statisticType: "sum", 
+      onStatisticField: `VOL_${y}`, 
+      outStatisticFieldName: `VOL_${y}` 
+    }));
+
+    const { features } = await csgLayer.queryFeatures(q);
+    const a = features && features[0] ? features[0].attributes : {};
+    const labels = []; 
+    const values = [];
+    years.forEach(y=>{ 
+      const v = Number(a[`VOL_${y}`]||0); 
+      if(v>0){ 
+        labels.push(String(y)); 
+        values.push(v); 
+      } 
+    });
+    return { labels, values };
+  }
+
+  function renderCSGPanel(overall, trend, selectedCategory){
+    resultDiv.innerHTML = `
+      <div class="stats" id="statsCSG"></div>
+
+      <h3 class="panel-heading">Contributing formation/s</h3>
+      <div class="legend-list" id="listCSG"></div>
+
+      <div class="chart"><canvas id="trendChart"></canvas></div>
+      <div id="trendCheck" class="checksum"></div> 
+
+      <div style="font-size:12px; color:#475569; margin-top:8px;">
+        * Total volume of extracted water per year based on previous three years average
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 10px;">
+        <button id="resetCSG" class="esri-button" style="display:${selectedCategory? 'inline-flex':'none'}; background:#0ea5e9;">Reset</button>
+      </div>`;
+
+    // Stats: Wells + Total volume per year (3yr avg)
+    document.getElementById('statsCSG').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-title">Wells</div>
+        <div class="stat-value">${(overall.wells||0).toLocaleString()}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Total volume per year</div>
+        <div class="stat-value">${Number(overall.currentRate||0).toFixed(1)}<span class="stat-unit">ML/year</span></div>
+      </div>
+      <div></div>`;
+
+    // Build list from category volumes (cached)
+    const entries = Object.entries(csgCategoryVolumes).sort((a,b)=> b[1]-a[1]);
+    const list = document.getElementById('listCSG');
+    const pctBase = csgVolumeTotal || 1;
+    
+    list.innerHTML = entries.map(([category, totalVol], i)=>{
+      const pct = ((totalVol / pctBase) * 100).toFixed(1);
+      const color = `hsl(${i*35}, 65%, 65%)`;
+      const name = category || 'Unknown';
+      const safe = name.replace(/'/g, "&#39;");
+      return `
+        <div class="legend-item" data-key='${safe}'>
+          <div class="legend-left">
+            <span class="legend-swatch" style="background:${color}"></span>
+            <span>${name}</span>
+          </div>
+          <span class="legend-pct">${pct}%</span>
+        </div>`;
+    }).join('');
+
+    // Click handler filters by category
+    list.querySelectorAll('.legend-item').forEach(el=> el.onclick = async ()=>{
+      const key = el.getAttribute('data-key').replace(/&#39;/g, "'");
+      loader.style.display = 'block';
+      try {
+        const where = makeCSGWhere(key);
+        const [oBase, t] = await Promise.all([
+          fetchCSGOverallStats(lastGeom, where),
+          fetchCSGTrend(lastGeom, where)
+        ]);
+        const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(t);
+        const o = { wells: oBase.wells, currentRate };
+        renderCSGPanel(o, t, key);
+      } catch(e){ 
+        console.error(e); 
+        resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>'; 
+      }
+      finally { 
+        loader.style.display = 'none'; 
+      }
+    });
+
+    // Trend chart
+    if(trendChart) { 
+      trendChart.destroy(); 
+      trendChart = null; 
+    }
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    trendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: (trend && trend.labels) ? trend.labels : [],
+        datasets: [{
+          label: 'Volume/Year (ML)',
+          data: (trend && trend.values) ? trend.values : [],
+          borderColor: '#0b3c5d',
+          backgroundColor: 'rgba(11,60,93,0.08)',
+          fill: true,
+          lineTension: 0,
+          pointRadius: 2,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        legend: { display: false },
+        scales: {
+          xAxes: [{
+            ticks: { autoSkip: true, maxRotation: 90, minRotation: 0 },
+            gridLines: { display: false }
+          }],
+          yAxes: [{
+            ticks: { beginAtZero: true },
+            gridLines: { color: 'rgba(0,0,0,0.05)' },
+            scaleLabel: { display: true, labelString: 'Volume (ML)' }
+          }]
+        },
+        tooltips: {
+          callbacks: {
+            label: function(item){ 
+              return (parseFloat(item.yLabel).toFixed(1) + ' ML'); 
+            }
+          }
+        }
+      }
+    });
+
+    // Trend total checksum
+    (function(){
+      var sum=(trend.values||[]).reduce(function(s,v){return s+Number(v||0);},0);
+      var el=document.getElementById('trendCheck');
+      if(el){ 
+        el.innerHTML = 'Trend total: '+sum.toFixed(1)+' ML'; 
+      }
+    })();
+
+    // Reset button
+    const resetBtn = document.getElementById('resetCSG');
+    if(resetBtn){ 
+      resetBtn.onclick = async ()=>{
+        loader.style.display = 'block';
+        try {
+          const [oBase,t] = await Promise.all([
+            fetchCSGOverallStats(lastGeom, null),
+            fetchCSGTrend(lastGeom, null)
+          ]);
+          const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(t);
+          const o = { wells: oBase.wells, currentRate };
+          renderCSGPanel(o,t,null);
+        } finally { 
+          loader.style.display = 'none'; 
+        }
+      }; 
+    }
+  }
+
+  // --- Water Use (server-side aggregation) ---
+  function makeWUWhere(selectedFormation){
+    if(!selectedFormation) return null;
+    const safe = String(selectedFormation).replace(/'/g, "''");
+    return `FORMATION = '${safe}'`;
+  }
+
+  // Group by FORMATION and sum ML_Bore
+  async function fetchWUCategoryVolumes(geometry){
+    const q = wuLayer.createQuery();
+    q.geometry = geometry;
+    q.returnGeometry = false;
+    q.groupByFieldsForStatistics = ["FORMATION"];
+    q.outStatistics = [
+      { statisticType: "sum", onStatisticField: "ML_Bore", outStatisticFieldName: "total_volume" }
+    ];
+    const { features } = await wuLayer.queryFeatures(q);
+    const volumes = {}; 
+    let total = 0;
+    (features || []).forEach(f=>{
+      const k = f.attributes.FORMATION || 'Unknown';
+      const v = Number(f.attributes.total_volume || 0);
+      volumes[k] = (volumes[k] || 0) + v;
+      total += v;
+    });
+    return { volumes, total };
+  }
+  
+  // Returns bore count and sum of 3-year avg rate
+  async function fetchWUOverallStats(geometry, where){
+    const q = wuLayer.createQuery();
+    q.geometry = geometry; 
+    q.returnGeometry = false; 
+    if(where) q.where = where;
+
+    const outStats = [
+      { statisticType: "count", onStatisticField: "OBJECTID", outStatisticFieldName: "bore_count" },
+      { statisticType: "sum", onStatisticField: "Rate__avg_prev_3yr_", outStatisticFieldName: "total_rate" }
+    ];
+    q.outStatistics = outStats;
+
+    const { features } = await wuLayer.queryFeatures(q);
+    const a = features && features[0] ? features[0].attributes : {};
+    const bores = a.bore_count || 0;
+    const currentRate = a.total_rate || 0;
+
+    return { bores, currentRate };
+  }
+
+  async function fetchWUTrend(geometry, where){
+    const q = wuLayer.createQuery(); 
+    q.geometry = geometry; 
+    q.returnGeometry = false; 
+    if(where) q.where = where;
+
+    const years = [
+      1995,1996,1997,1998,1999,
+      2000,2001,2002,2003,2004,
+      2005,2006,2007,2008,2009,
+      2010,2011,2012,2013,2014,
+      2015,2016,2017,2018,2019,
+      2020,2021,2022,2023,2024
+    ];
+    // Filter out years that don't exist in this layer's fields
+    const validYears = years.filter(y => wuLayer.fields.some(f => f.name === `Vol_${y}`));
+
+    q.outStatistics = validYears.map(y => ({
+      statisticType: "sum", 
+      onStatisticField: `Vol_${y}`, 
+      outStatisticFieldName: `Vol_${y}` 
+    }));
+
+    const { features } = await wuLayer.queryFeatures(q);
+    const a = features && features[0] ? features[0].attributes : {};
+    const labels = []; 
+    const values = [];
+    validYears.forEach(y=>{ 
+      const v = Number(a[`Vol_${y}`]||0); 
+      if(v>0){ 
+        labels.push(String(y)); 
+        values.push(v); 
+      } 
+    });
+    return { labels, values };
+  }
+
+  function renderWUPanel(overall, trend, selectedFormation){
+    resultDiv.innerHTML = `
+      <div class="stats" id="statsWU"></div>
+
+      <h3 class="panel-heading">Contributing formation/s</h3>
+      <div class="legend-list" id="listWU"></div>
+
+      <div class="chart"><canvas id="trendChart"></canvas></div>
+      <div id="trendCheck" class="checksum"></div> 
+
+      <div style="font-size:12px; color:#475569; margin-top:8px;">
+        * Total volume of groundwater use per year based on previous three years average
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 10px;">
+        <button id="resetWU" class="esri-button" style="display:${selectedFormation? 'inline-flex':'none'}; background:#0ea5e9;">Reset</button>
+      </div>`;
+
+    // Stats: Bores + Total volume per year (3yr avg)
+    document.getElementById('statsWU').innerHTML = `
+      <div class="stat-card">
+        <div class="stat-title">Bores</div>
+        <div class="stat-value">${(overall.bores||0).toLocaleString()}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Total volume per year</div>
+        <div class="stat-value">${Number(overall.currentRate||0).toFixed(1)}<span class="stat-unit">ML/year</span></div>
+      </div>
+      <div></div>`;
+
+    // Build list from category volumes (cached)
+    const entries = Object.entries(wuCategoryVolumes).sort((a,b)=> b[1]-a[1]);
+    const list = document.getElementById('listWU');
+    const pctBase = wuVolumeTotal || 1;
+    
+    list.innerHTML = entries.map(([category, totalVol], i)=>{
+      const pct = ((totalVol / pctBase) * 100).toFixed(1);
+      const color = `hsl(${i*50}, 70%, 60%)`;
+      const name = category || 'Unknown';
+      const safe = name.replace(/'/g, "&#39;");
+      return `
+        <div class="legend-item" data-key='${safe}'>
+          <div class="legend-left">
+            <span class="legend-swatch" style="background:${color}"></span>
+            <span>${name}</span>
+          </div>
+          <span class="legend-pct">${pct}%</span>
+        </div>`;
+    }).join('');
+
+    // Click handler filters by category
+    list.querySelectorAll('.legend-item').forEach(el=> el.onclick = async ()=>{
+      const key = el.getAttribute('data-key').replace(/&#39;/g, "'");
+      loader.style.display = 'block';
+      try {
+        const where = makeWUWhere(key);
+        const [o, t] = await Promise.all([
+          fetchWUOverallStats(lastGeom, where),
+          fetchWUTrend(lastGeom, where)
+        ]);
+        renderWUPanel(o, t, key);
+      } catch(e){ 
+        console.error(e); 
+        resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>'; 
+      }
+      finally { 
+        loader.style.display = 'none'; 
+      }
+    });
+
+    // Trend chart
+    if(trendChart) { 
+      trendChart.destroy(); 
+      trendChart = null; 
+    }
+    const canvas = document.getElementById('trendChart');
+    if (!canvas) return;
+    trendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: (trend && trend.labels) ? trend.labels : [],
+        datasets: [{
+          label: 'Volume/Year (ML)',
+          data: (trend && trend.values) ? trend.values : [],
+          borderColor: '#1d4ed8',
+          backgroundColor: 'rgba(29,78,216,0.08)',
+          fill: true,
+          lineTension: 0,
+          pointRadius: 2,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        legend: { display: false },
+        scales: {
+          xAxes: [{
+            ticks: { autoSkip: true, maxRotation: 90, minRotation: 0 },
+            gridLines: { display: false }
+          }],
+          yAxes: [{
+            ticks: { beginAtZero: true },
+            gridLines: { color: 'rgba(0,0,0,0.05)' },
+            scaleLabel: { display: true, labelString: 'Volume (ML)' }
+          }]
+        },
+        tooltips: {
+          callbacks: {
+            label: function(item){ 
+              return (parseFloat(item.yLabel).toFixed(1) + ' ML'); 
+            }
+          }
+        }
+      }
+    });
+
+    // Trend total checksum
+    (function(){
+      var sum=(trend.values||[]).reduce(function(s,v){return s+Number(v||0);},0);
+      var el=document.getElementById('trendCheck');
+      if(el){ 
+        el.innerHTML = 'Trend total: '+sum.toFixed(1)+' ML'; 
+      }
+    })();
+
+    // Reset button
+    const resetBtn = document.getElementById('resetWU');
+    if(resetBtn){ 
+      resetBtn.onclick = async ()=>{
+        loader.style.display = 'block';
+        try {
+          const [o,t] = await Promise.all([
+            fetchWUOverallStats(lastGeom, null),
+            fetchWUTrend(lastGeom, null)
+          ]);
+          renderWUPanel(o,t,null);
+        } finally { 
+          loader.style.display = 'none'; 
+        }
+      }; 
+    }
+  }
+
+});
+</script>
+</body>
+</html>
