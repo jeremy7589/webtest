@@ -828,6 +828,96 @@
 
 
 
+
+
+    @media (hover:none), (pointer:coarse) {
+
+      #chooserScreen {
+
+        justify-content:flex-start;
+
+        align-items:stretch;
+
+        padding:16px;
+
+        padding-top:calc(var(--safe-top) + 10px);
+
+        padding-bottom:calc(var(--safe-bottom) + 20px);
+
+        -webkit-overflow-scrolling:touch;
+
+        touch-action:pan-y;
+
+        overscroll-behavior-y:contain;
+
+      }
+
+      #chooserScreen::before {
+
+        background:
+
+          radial-gradient(ellipse 75% 52% at 24% 80%, rgba(0,60,120,0.12) 0%, transparent 62%),
+
+          radial-gradient(ellipse 58% 36% at 82% 18%, rgba(200,148,58,0.045) 0%, transparent 56%);
+
+      }
+
+      .chooser-inner {
+
+        margin:0 auto;
+
+      }
+
+      .chooser-brand {
+
+        margin-bottom:24px;
+
+      }
+
+      .rcc,
+
+      .rcc-img-wrap img,
+
+      .rcc-cta {
+
+        transition:none !important;
+
+      }
+
+      .rcc:hover {
+
+        transform:none;
+
+        box-shadow:var(--shadow-sm);
+
+      }
+
+      .rcc:hover .rcc-img-wrap img {
+
+        transform:none;
+
+      }
+
+      .rcc,
+
+      .top-strip,
+
+      .route-card,
+
+      .media-card,
+
+      .media-peek,
+
+      .loading-card {
+
+        -webkit-backdrop-filter:none;
+
+        backdrop-filter:none;
+
+      }
+
+    }
+
     @media (max-width:700px) {
 
       :root { --boat-size:min(28vw,118px); }
@@ -889,6 +979,7 @@
             <img src="https://sealavieescapes.com.au/api/media/file/dji_fly_20251230_131346_0011_1767148788448_photo_beautify.jpg"
 
                  alt="The Ultimate Escape — Moreton Island"
+                 decoding="async" fetchpriority="low"
 
                  onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Tangalooma_Wrecks_aerial.JPG/1280px-Tangalooma_Wrecks_aerial.JPG'">
 
@@ -933,6 +1024,7 @@
             <img src="https://sealavieescapes.com.au/api/media/file/20250319-DSC00005.jpg"
 
                  alt="The Island Getaway — Amity Point"
+                 decoding="async" fetchpriority="low"
 
                  onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Moreton_Bay.jpg/1280px-Moreton_Bay.jpg'">
 
@@ -1200,7 +1292,10 @@ require([
 
   const FALLBACK_MEDIA_TRIGGER_BEHIND = 0.012;
 
-  const MEDIA_AUTO_COLLAPSE_MS = 5600;
+  // Media cards stay open while the boat remains at/near the active stop.
+  // They no longer auto-collapse after a few seconds, so videos keep playing
+  // until the user moves away from that stop or closes the card manually.
+
 
 
 
@@ -1338,45 +1433,11 @@ require([
 
 
 
-  const map = new Map({ basemap: "hybrid" });
+  let map = null;
 
-  const view = new MapView({
+  let view = null;
 
-    container: "viewDiv",
-
-    map,
-
-    center: [153.20, -27.35],
-
-    zoom: 11.5,
-
-    constraints: { snapToZoom: false, rotationEnabled: false },
-
-    ui: { components: [] }
-
-  });
-
-
-
-  ["drag", "mouse-wheel", "double-click", "double-click-Control", "key-down"].forEach(type => {
-
-    view.on(type, e => e.stopPropagation());
-
-  });
-
-
-
-  const routeLayer = new FeatureLayer({
-
-    url: ROUTE_LAYER_URL,
-
-    outFields: ["*"],
-
-    visible: false
-
-  });
-
-  map.add(routeLayer);
+  let routeLayer = null;
 
 
 
@@ -1466,35 +1527,120 @@ require([
 
 
 
-  const app = document.getElementById("app");
+  const gestureLayer = ui.journeyScreen;
 
-  app.addEventListener("touchstart", onTouchStart, { passive:false });
+  gestureLayer.addEventListener("touchstart", onTouchStart, { passive:false });
 
-  app.addEventListener("touchmove", onTouchMove, { passive:false });
+  gestureLayer.addEventListener("touchmove", onTouchMove, { passive:false });
 
-  app.addEventListener("touchend", onTouchEnd, { passive:false });
+  gestureLayer.addEventListener("touchend", onTouchEnd, { passive:false });
 
-  app.addEventListener("touchcancel", onTouchEnd, { passive:false });
+  gestureLayer.addEventListener("touchcancel", onTouchEnd, { passive:false });
 
-  app.addEventListener("pointerdown", onPointerDown);
+  gestureLayer.addEventListener("pointerdown", onPointerDown);
 
-  app.addEventListener("pointermove", onPointerMove);
+  gestureLayer.addEventListener("pointermove", onPointerMove);
 
-  app.addEventListener("pointerup", onPointerUp);
+  gestureLayer.addEventListener("pointerup", onPointerUp);
 
-  app.addEventListener("pointercancel", onPointerUp);
+  gestureLayer.addEventListener("pointercancel", onPointerUp);
 
   window.addEventListener("wheel", onWheel, { passive:false });
 
 
 
-  view.when(() => {
+  // Start loading the exact WebMap in the background while the package menu is open.
+  // This avoids the visible flash from a temporary satellite/hybrid basemap and makes
+  // the journey feel smoother when a route is selected on mobile.
+  scheduleBackgroundMapPreload();
 
-    state.mapReady = true;
 
-    state.loadingPromise = loadData();
 
-  });
+  function scheduleBackgroundMapPreload() {
+
+    const start = () => ensureMapReady().catch(err => console.warn("Background map preload failed", err));
+
+    if ("requestIdleCallback" in window) {
+
+      window.requestIdleCallback(start, { timeout: 1200 });
+
+    } else {
+
+      window.setTimeout(start, 650);
+
+    }
+
+  }
+
+
+
+  function ensureMapReady() {
+
+    if (state.loadingPromise) return state.loadingPromise;
+
+
+
+    // Use the original ArcGIS WebMap from the first render. Do not create a
+
+    // temporary satellite/hybrid Map first, because that causes the visible
+
+    // basemap swap and extra loading delay when the journey opens.
+
+    map = new WebMap({ portalItem: { id: STOPS_WEBMAP_ID } });
+
+    view = new MapView({
+
+      container: "viewDiv",
+
+      map,
+
+      center: [153.20, -27.35],
+
+      zoom: 11.5,
+
+      constraints: { snapToZoom: false, rotationEnabled: false },
+
+      ui: { components: [] }
+
+    });
+
+
+
+    ["drag", "mouse-wheel", "double-click", "double-click-Control", "key-down"].forEach(type => {
+
+      view.on(type, e => e.stopPropagation());
+
+    });
+
+
+
+    routeLayer = new FeatureLayer({
+
+      url: ROUTE_LAYER_URL,
+
+      outFields: ["*"],
+
+      visible: false
+
+    });
+
+    map.add(routeLayer);
+
+
+
+    state.loadingPromise = view.when().then(() => {
+
+      state.mapReady = true;
+
+      return loadData();
+
+    });
+
+
+
+    return state.loadingPromise;
+
+  }
 
 
 
@@ -1526,11 +1672,17 @@ require([
 
 
 
-      const wm = new WebMap({ portalItem: { id: STOPS_WEBMAP_ID } });
+      // The map is already the original WebMap, loaded in the background.
 
-      await wm.loadAll();
+      // Load all web map layers here so the point layer and its attachments are
 
-      state.pointLayer = findPointLayer(wm) || null;
+      // ready before route media matching starts.
+
+      await map.loadAll();
+
+
+
+      state.pointLayer = findPointLayer(map) || null;
 
 
 
@@ -1612,7 +1764,7 @@ require([
 
 
 
-    if (state.loadingPromise) await state.loadingPromise;
+    await ensureMapReady();
 
     if (!state.routeFeatures.length) return;
 
@@ -2321,7 +2473,7 @@ require([
 
     const idx = stopIdxFromProgress(state.stopFractions, displayProgress);
 
-    const mediaIdx = mediaStopIdxFromProgress(state.progress, idx);
+    const mediaIdx = mediaStopIdxFromProgress(state.progress);
 
     const stop = state.stops[idx];
 
@@ -2359,7 +2511,15 @@ require([
 
       state.currentStopIdx = mediaIdx;
 
-      updateMedia(mediaIdx, initial);
+      if (mediaIdx >= 0) {
+
+        updateMedia(mediaIdx, initial);
+
+      } else {
+
+        hideMediaWhenAwayFromStops();
+
+      }
 
     }
 
@@ -2367,11 +2527,11 @@ require([
 
 
 
-  function mediaStopIdxFromProgress(progress, fallbackIdx) {
+  function mediaStopIdxFromProgress(progress) {
 
     if (!state.stops.length) return -1;
 
-    let bestIdx = fallbackIdx >= 0 ? fallbackIdx : 0;
+    let bestIdx = -1;
 
     let bestDistance = Infinity;
 
@@ -2527,7 +2687,7 @@ require([
 
     renderItem();
 
-    showMedia(!initial);
+    showMedia(false);
 
 
 
@@ -2549,15 +2709,29 @@ require([
 
   function showMedia(autoCollapse) {
 
+    // autoCollapse is intentionally ignored now. The stop media should stay
+
+    // open until the boat moves away from the stop, especially for South
+
+    // Moreton where the attachment is a video.
+
+    if (state.collapseTimer) { clearTimeout(state.collapseTimer); state.collapseTimer = null; }
+
     ui.mediaPeekBtn.classList.remove("show");
 
     ui.mediaCard.classList.add("show");
 
-    if (autoCollapse) {
+  }
 
-      state.collapseTimer = setTimeout(collapseMedia, MEDIA_AUTO_COLLAPSE_MS);
 
-    }
+
+  function hideMediaWhenAwayFromStops() {
+
+    clearTimers();
+
+    ui.mediaCard.classList.remove("show");
+
+    ui.mediaPeekBtn.classList.remove("show");
 
   }
 
