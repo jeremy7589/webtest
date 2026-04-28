@@ -676,7 +676,7 @@
 
     }
 
-    .current-stop { text-align:right; max-width:48%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .current-stop { text-align:right; max-width:44%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
     .stop-progress-label {
 
@@ -702,13 +702,17 @@
 
     .stop-tick::after {
 
-      content:attr(data-time); position:absolute; top:-19px; left:50%; transform:translateX(-50%);
-
-      font-size:8px; font-weight:700; letter-spacing:.08em; white-space:nowrap;
-
-      color:rgba(229,185,106,.82); text-shadow:0 1px 4px rgba(0,0,0,.7);
+      content:""; display:none;
 
     }
+
+    #routeMeta { display:none; }
+
+    .route-top { margin-bottom:14px; }
+
+    .stop-name-row { margin-top:8px; }
+
+    #midLabel { display:none; }
 
     input[type="range"] {
 
@@ -1308,15 +1312,15 @@ require([
 
   // Media timing is now based on real map distance, not route percentage.
   // The old percentage trigger could fire several kilometres too early on long bay routes.
-  const MEDIA_TRIGGER_AHEAD_METERS = 1200;
+  const MEDIA_TRIGGER_AHEAD_METERS = 1800;
 
-  const MEDIA_TRIGGER_BEHIND_METERS = 500;
+  const MEDIA_TRIGGER_BEHIND_METERS = 900;
 
   const STOP_LABEL_AHEAD_METERS = 700;
 
-  const FALLBACK_MEDIA_TRIGGER_AHEAD = 0.035;
+  const FALLBACK_MEDIA_TRIGGER_AHEAD = 0.055;
 
-  const FALLBACK_MEDIA_TRIGGER_BEHIND = 0.012;
+  const FALLBACK_MEDIA_TRIGGER_BEHIND = 0.025;
 
   // Media cards stay open while the boat remains at/near the active stop.
   // They no longer auto-collapse after a few seconds, so videos keep playing
@@ -1538,6 +1542,8 @@ require([
     collapseTimer: null,
 
     hintHidden: false,
+
+    renderedZoom: null,
 
     touch: { active:false, id:null, startX:0, startProgress:0 }
 
@@ -2547,13 +2553,23 @@ require([
 
     ui.routeStatus.textContent = `${routeTime} · ${journeyLabel || "Your journey"}`;
 
-    ui.midLabel.textContent = journeyLabel || "Your journey";
+    ui.midLabel.textContent = "";
 
 
 
     view.center = new Point({ x:pt.x, y:pt.y, spatialReference:pt.spatialReference });
 
-    view.zoom = getJourneyZoom(pkg, state.progress, mediaIdx);
+    const targetZoom = getJourneyZoom(pkg, state.progress, mediaIdx);
+    if (initial || state.renderedZoom == null || !Number.isFinite(state.renderedZoom)) {
+      state.renderedZoom = targetZoom;
+    } else {
+      // Smooth zooming: zoom out gently after departure and zoom back in
+      // gradually while approaching each stop, instead of snapping.
+      const zoomEase = 0.11;
+      state.renderedZoom += (targetZoom - state.renderedZoom) * zoomEase;
+      if (Math.abs(targetZoom - state.renderedZoom) < 0.025) state.renderedZoom = targetZoom;
+    }
+    view.zoom = state.renderedZoom;
 
 
 
@@ -2766,20 +2782,26 @@ require([
 
   function getJourneyZoom(pkg, progress, activeMediaIdx) {
 
-    // Stay zoomed out during the open-water journey so the guest understands
-    // the whole movement across the bay. Zoom back in when approaching a stop.
+    // Zoom is now distance-aware, not only stop-aware:
+    // close at departure/stops, then slowly zoom out on the cruise,
+    // and slowly zoom back in while approaching the next point.
     const isSmallScreen = window.matchMedia && window.matchMedia("(max-width: 700px)").matches;
     const closeStopZoom = isSmallScreen ? 13.9 : 14.25;
     const journeyZoom = isSmallScreen ? 11.05 : 11.35;
+    const transitionMeters = isSmallScreen ? 3600 : 4300;
 
-    if (activeMediaIdx >= 0) return closeStopZoom;
+    let nearestMeters = Infinity;
+    if (state.stops && state.stops.length && state.routeTotalMeters) {
+      for (const stop of state.stops) {
+        const d = Math.abs((stop.fraction || 0) - progress) * state.routeTotalMeters;
+        if (d < nearestMeters) nearestMeters = d;
+      }
+    }
 
-    if (state.stops && state.stops.length > 1) {
-      const first = state.stops[0].fraction || 0;
-      const last = state.stops[state.stops.length - 1].fraction || 1;
-      const awayFromStart = progress > first + 0.035;
-      const beforeEnd = progress < last - 0.035;
-      if (awayFromStart && beforeEnd) return journeyZoom;
+    if (Number.isFinite(nearestMeters)) {
+      const t = clamp(nearestMeters / transitionMeters, 0, 1);
+      const smooth = t * t * (3 - 2 * t);
+      return closeStopZoom + (journeyZoom - closeStopZoom) * smooth;
     }
 
     return getZoom(pkg.zoomCurve, progress);
