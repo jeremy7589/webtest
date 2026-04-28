@@ -1,3 +1,9 @@
+not great go from here 
+
+
+
+
+
 <!DOCTYPE html>
 
 <html lang="en">
@@ -1188,9 +1194,17 @@ require([
 
   const APPROACH_BUFFER = 0.028;
 
-  const MEDIA_TRIGGER_AHEAD = 0.075;
+  // Media timing is now based on real map distance, not route percentage.
+  // The old percentage trigger could fire several kilometres too early on long bay routes.
+  const MEDIA_TRIGGER_AHEAD_METERS = 1200;
 
-  const MEDIA_TRIGGER_BEHIND = 0.025;
+  const MEDIA_TRIGGER_BEHIND_METERS = 500;
+
+  const STOP_LABEL_AHEAD_METERS = 700;
+
+  const FALLBACK_MEDIA_TRIGGER_AHEAD = 0.035;
+
+  const FALLBACK_MEDIA_TRIGGER_BEHIND = 0.012;
 
   const MEDIA_AUTO_COLLAPSE_MS = 5600;
 
@@ -1216,17 +1230,15 @@ require([
 
       stopSpecs: [
 
-        { label:"New Farm Boat Hub", aliases:["new farm boat hub","new farm","boat hub"], fallbackText:"The city departure. This is where Brisbane pace begins to fall away.", fallbackMedia: [] },
+        { label:"New Farm Pick Up", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"The city departure. This is where Brisbane pace begins to fall away.", fallbackMedia: [] },
 
-        { label:"Manly Marina", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"Queensland's largest recreational harbour and the true gateway to Moreton Bay.", fallbackMedia: [] },
+        { label:"South Moreton", aliases:["south moreton","moreton south","moreton island south","moreton south beach"], fallbackText:"Now the island itself becomes the setting and the water turns clearer.", fallbackMedia: [] },
 
-        { label:"Amity Banks", aliases:["amity banks","amitybank","banks"], fallbackText:"Open bay water, more sky, and the feeling that the day is truly underway.", fallbackMedia: [] },
+        { label:"Tangalooma Wrecks", aliases:["tangalooma wrecks","tangalooma","wrecks"], fallbackText:"The signature Moreton arrival — iconic water, snorkelling country and unmistakable island atmosphere.", fallbackMedia: [] },
 
-        { label:"Amity Tavern", aliases:["amity tavern","amity point tavern","amity point","amity tav"], fallbackText:"A recognisable island stop with character and a very local Moreton Bay feel.", fallbackMedia: [] },
+        { label:"Bulwer", aliases:["bulwer","bulwer beach","bulwer moreton","bulwer moreton island"], fallbackText:"A quieter northern Moreton Island stop with relaxed island atmosphere and clear-water beach edges.", fallbackMedia: [] },
 
-        { label:"Moreton South", aliases:["moreton south","south moreton","moreton island south","moreton south beach"], fallbackText:"Now the island itself becomes the setting and the water turns clearer.", fallbackMedia: [] },
-
-        { label:"Tangalooma", aliases:["tangalooma","tangalooma wrecks","wrecks"], fallbackText:"The signature Moreton arrival — iconic water, snorkelling country and unmistakable island atmosphere.", fallbackMedia: [] }
+        { label:"New Farm Pick Up", displayName:"Return to New Farm", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"The return leg back to Brisbane after the island escape.", fallbackMedia: [], reuse:true }
 
       ]
 
@@ -1250,13 +1262,15 @@ require([
 
       stopSpecs: [
 
-        { label:"New Farm Boat Hub", aliases:["new farm boat hub","new farm","boat hub"], fallbackText:"A city start that quickly gives way to bay water and breathing room.", fallbackMedia: [] },
-
         { label:"Manly Marina", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"The harbour threshold — urban routine behind, island rhythm ahead.", fallbackMedia: [] },
 
         { label:"Amity Banks", aliases:["amity banks","amitybank","banks"], fallbackText:"A quiet stretch of southern bay where the route opens and the city feels far away.", fallbackMedia: [] },
 
-        { label:"Amity Tavern", aliases:["amity tavern","amity point tavern","amity point","amity tav"], fallbackText:"The arrival mood of North Stradbroke — local, relaxed and genuinely different.", fallbackMedia: [] }
+        { label:"Amity Tavern", aliases:["amity tavern","amity point tavern","amity point","amity tav"], fallbackText:"The arrival mood of North Stradbroke — local, relaxed and genuinely different.", fallbackMedia: [] },
+
+        { label:"Amity Banks", displayName:"Amity Banks Return", aliases:["amity banks","amitybank","banks"], fallbackText:"The return pass through Amity Banks on the way back across the bay.", fallbackMedia: [], reuse:true },
+
+        { label:"Manly Marina", displayName:"Return to Manly Marina", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"Back into Manly Marina after the North Stradbroke Island escape.", fallbackMedia: [], reuse:true }
 
       ]
 
@@ -1383,6 +1397,8 @@ require([
     routePoints: [],
 
     routeFractions: [],
+
+    routeTotalMeters: 0,
 
     stopFractions: [],
 
@@ -1622,11 +1638,21 @@ require([
 
     state.routeFractions = buildFractions(state.routePoints);
 
+    state.routeTotalMeters = totalPathLength(state.routePoints);
+
 
 
     state.stops = await buildStopsForPackage(pkg);
 
     state.stopFractions = state.stops.map(s => s.fraction);
+
+    console.table(state.stops.map((s, i) => ({
+      order: i + 1,
+      name: s.name,
+      routePercent: Math.round(s.fraction * 1000) / 10,
+      hasMedia: !!(s.media && s.media.length),
+      mediaType: s.media && s.media[0] ? s.media[0].type : "none"
+    })));
 
 
 
@@ -1716,11 +1742,15 @@ require([
 
       const spec = pkg.stopSpecs[i];
 
-      let match = findBestFeatureMatch(state.pointFeatures, spec, used);
+      const expectedFraction = fallbackFraction(pkg.stopSpecs.length, i);
+
+      const allowReuse = !!spec.reuse;
+
+      let match = findBestFeatureMatch(state.pointFeatures, spec, used, allowReuse);
 
       if (!match) {
 
-        match = findNearestFeatureByFraction(state.pointFeatures, used, fallbackFraction(pkg.stopSpecs.length, i), 0.16);
+        match = findNearestFeatureByFraction(state.pointFeatures, used, expectedFraction, 0.18, allowReuse);
 
       }
 
@@ -1728,7 +1758,7 @@ require([
 
       const stop = {
 
-        name: spec.label,
+        name: spec.displayName || spec.label,
 
         text: spec.fallbackText,
 
@@ -1746,17 +1776,20 @@ require([
 
       if (match) {
 
-        used.add(match.index);
+        if (!allowReuse) used.add(match.index);
 
         const f = match.feature;
 
         const a = f.attributes || {};
 
-        stop.name = pickVal(a, ["Name","NAME","Title","TITLE","Stop","STOP","Location","site_name","Caption"]) || spec.label;
+        // Keep the stop name/description controlled by the package definition so the
+        // route story stays in the intended order. The feature layer name is used
+        // for matching only; description/tag fields can still override if present.
+        stop.name = spec.displayName || spec.label;
 
-        stop.text = pickVal(a, ["Description","DESCRIPTION","Details","Narrative","Text","Notes","Summary","Caption"]) || spec.fallbackText;
+        stop.text = pickVal(a, ["Description","DESCRIPTION","description","Details","details","Narrative","narrative","Text","text","Notes","notes","Summary","summary","Caption","caption"]) || spec.fallbackText;
 
-        stop.tag = pickVal(a, ["Tag","TYPE","Category","Type","tag","category"]) || stop.tag;
+        stop.tag = pickVal(a, ["Tag","TYPE","Category","Type","tag","category","type"]) || stop.tag;
 
         stop.point = {
 
@@ -1768,7 +1801,7 @@ require([
 
         };
 
-        stop.fraction = nearestFractionOnRoute(stop.point, state.routePoints);
+        stop.fraction = nearestFractionOnRoute(stop.point, state.routePoints, expectedFraction);
 
 
 
@@ -1896,37 +1929,57 @@ require([
 
 
 
-  function findBestFeatureMatch(features, spec, used) {
+  function findBestFeatureMatch(features, spec, used, allowReuse) {
 
     let best = null;
 
     let bestScore = -Infinity;
 
+    const labelNorm = normalizeString(spec.label);
+
+    const aliasNorms = (spec.aliases || []).map(normalizeString).filter(Boolean);
+
 
 
     for (let i = 0; i < (features || []).length; i++) {
 
-      if (used.has(i)) continue;
+      if (!allowReuse && used.has(i)) continue;
 
       const f = features[i];
 
       const a = f.attributes || {};
 
-      const bag = [
+      // The AGOL table currently uses a lowercase "name" field. The previous
 
-        a.Name, a.NAME, a.Title, a.TITLE, a.Stop, a.STOP, a.Location,
+      // version only checked Name/NAME, so it could not match stop names and
 
-        a.site_name, a.Caption, a.Description, a.DESCRIPTION
+      // fell back to nearest geometry, which could attach the wrong media to
 
-      ].filter(Boolean).join(" | ");
+      // the wrong route position.
 
-      const score = scoreMatch(normalizeString(bag), spec);
+      const featureName = pickVal(a, ["name","Name","NAME","title","Title","TITLE","stop","Stop","STOP","location","Location","site_name","Caption","caption"]) || "";
+
+      const featureDesc = pickVal(a, ["description","Description","DESCRIPTION","details","Details","narrative","Narrative","text","Text","notes","Notes","summary","Summary"]) || "";
+
+      const haystack = normalizeString([featureName, featureDesc].filter(Boolean).join(" | "));
+
+      let score = scoreMatch(haystack, spec);
+
+      const nameNorm = normalizeString(featureName);
+
+      if (nameNorm && nameNorm === labelNorm) score += 1000;
+
+      if (nameNorm && aliasNorms.includes(nameNorm)) score += 900;
+
+      if (nameNorm && (nameNorm.includes(labelNorm) || labelNorm.includes(nameNorm))) score += 160;
+
+
 
       if (score > bestScore) {
 
         bestScore = score;
 
-        best = { feature: f, index: i };
+        best = { feature: f, index: i, score };
 
       }
 
@@ -1938,7 +1991,7 @@ require([
 
 
 
-  function findNearestFeatureByFraction(features, used, expectedFraction, maxFractionGap) {
+  function findNearestFeatureByFraction(features, used, expectedFraction, maxFractionGap, allowReuse) {
 
     if (!features || !features.length || !state.routePoints.length) return null;
 
@@ -1950,7 +2003,7 @@ require([
 
     for (let i = 0; i < features.length; i++) {
 
-      if (used.has(i)) continue;
+      if (!allowReuse && used.has(i)) continue;
 
       const f = features[i];
 
@@ -1966,7 +2019,7 @@ require([
 
       };
 
-      const fraction = nearestFractionOnRoute(point, state.routePoints);
+      const fraction = nearestFractionOnRoute(point, state.routePoints, expectedFraction);
 
       const gap = Math.abs(fraction - expectedFraction);
 
@@ -1990,15 +2043,61 @@ require([
 
   function pickVal(attrs, keys) {
 
+    if (!attrs) return null;
+
+    const directKeys = Object.keys(attrs);
+
     for (const k of keys) {
 
-      const v = attrs[k];
+      if (Object.prototype.hasOwnProperty.call(attrs, k)) {
 
-      if (v !== null && v !== undefined && String(v).trim()) return String(v).trim();
+        const v = attrs[k];
+
+        if (v !== null && v !== undefined && String(v).trim()) return String(v).trim();
+
+      }
+
+      const wanted = normalizeString(k);
+
+      const foundKey = directKeys.find(existing => normalizeString(existing) === wanted);
+
+      if (foundKey) {
+
+        const v = attrs[foundKey];
+
+        if (v !== null && v !== undefined && String(v).trim()) return String(v).trim();
+
+      }
 
     }
 
     return null;
+
+  }
+
+
+
+  function totalPathLength(points) {
+
+    let total = 0;
+
+    for (let i = 1; i < (points || []).length; i++) total += distance2D(points[i - 1], points[i]);
+
+    return total;
+
+  }
+
+
+
+  function approachBufferFraction() {
+
+    if (state.routeTotalMeters > 0) {
+
+      return Math.min(APPROACH_BUFFER, STOP_LABEL_AHEAD_METERS / state.routeTotalMeters);
+
+    }
+
+    return APPROACH_BUFFER;
 
   }
 
@@ -2220,7 +2319,7 @@ require([
 
 
 
-    const displayProgress = Math.min(1, state.progress + APPROACH_BUFFER);
+    const displayProgress = Math.min(1, state.progress + approachBufferFraction());
 
     const pt = pointAtProgress(state.progress);
 
@@ -2282,25 +2381,31 @@ require([
 
     let bestDistance = Infinity;
 
+    const totalMeters = state.routeTotalMeters || 0;
+
 
 
     for (let i = 0; i < state.stops.length; i++) {
 
       const fraction = state.stops[i].fraction;
 
-      const ahead = fraction - progress;
+      const rawAhead = fraction - progress;
 
-      const behind = progress - fraction;
+      const rawBehind = progress - fraction;
 
-      const isApproaching = ahead >= 0 && ahead <= MEDIA_TRIGGER_AHEAD;
+      const ahead = totalMeters > 0 ? rawAhead * totalMeters : rawAhead;
 
-      const hasJustPassed = behind >= 0 && behind <= MEDIA_TRIGGER_BEHIND;
+      const behind = totalMeters > 0 ? rawBehind * totalMeters : rawBehind;
+
+      const isApproaching = ahead >= 0 && ahead <= (totalMeters > 0 ? MEDIA_TRIGGER_AHEAD_METERS : FALLBACK_MEDIA_TRIGGER_AHEAD);
+
+      const hasJustPassed = behind >= 0 && behind <= (totalMeters > 0 ? MEDIA_TRIGGER_BEHIND_METERS : FALLBACK_MEDIA_TRIGGER_BEHIND);
 
       if (!isApproaching && !hasJustPassed) continue;
 
 
 
-      const distance = Math.abs(fraction - progress);
+      const distance = Math.abs(totalMeters > 0 ? (fraction - progress) * totalMeters : fraction - progress);
 
       if (distance < bestDistance) {
 
@@ -2414,7 +2519,7 @@ require([
 
       if (item.type === "video") {
 
-        ui.mediaFrame.innerHTML = `${badge}<video src="${encodeURI(item.url)}" autoplay muted loop playsinline></video>`;
+        ui.mediaFrame.innerHTML = `${badge}<video src="${encodeURI(item.url)}" autoplay muted loop playsinline controls preload="auto"></video>`;
 
       } else {
 
@@ -2796,7 +2901,7 @@ require([
 
 
 
-  function nearestFractionOnRoute(point, routePoints) {
+  function nearestFractionOnRoute(point, routePoints, expectedFraction) {
 
     if (!routePoints.length) return 0;
 
@@ -2810,9 +2915,7 @@ require([
 
 
 
-    let bestFrac = 0;
-
-    let bestDistSq = Infinity;
+    const candidates = [];
 
     let acc = 0;
 
@@ -2842,25 +2945,65 @@ require([
 
       const distSq = ddx*ddx + ddy*ddy;
 
-      if (distSq < bestDistSq) {
+      const segLen = Math.sqrt(segLenSq);
 
-        bestDistSq = distSq;
+      const frac = (acc + segLen * t) / total;
 
-        const segLen = Math.sqrt(segLenSq);
+      candidates.push({ fraction: clamp(frac, 0, 1), distSq });
 
-        bestFrac = (acc + segLen * t) / total;
-
-      }
-
-      acc += Math.sqrt(segLenSq);
+      acc += segLen;
 
     }
 
-    return clamp(bestFrac, 0, 1);
+
+
+    if (!candidates.length) return 0;
+
+
+
+    const minDistSq = Math.min(...candidates.map(c => c.distSq));
+
+    const closeDistanceSq = minDistSq + 120 * 120;
+
+    let best = null;
+
+
+
+    for (const c of candidates) {
+
+      if (c.distSq > closeDistanceSq) continue;
+
+      if (!best) {
+
+        best = c;
+
+        continue;
+
+      }
+
+
+
+      if (expectedFraction !== undefined && expectedFraction !== null) {
+
+        const cGap = Math.abs(c.fraction - expectedFraction);
+
+        const bGap = Math.abs(best.fraction - expectedFraction);
+
+        if (cGap < bGap || (cGap === bGap && c.distSq < best.distSq)) best = c;
+
+      } else if (c.distSq < best.distSq) {
+
+        best = c;
+
+      }
+
+    }
+
+
+
+    return clamp((best || candidates[0]).fraction, 0, 1);
 
   }
-
-
 
   function stopIdxFromProgress(fractions, progress) {
 
@@ -2919,23 +3062,3 @@ require([
 </body>
 
 </html>
-
-
-
-
-
-
-
-
-
-then the app is great except couple things the photos dont show up anymore as the boat gets close to the feature point attachment fix that 
-
-
-
-on mobile srolling down to chose between differetn package on the frst page doesnt work well 
-
-
-
-
-
-3rd the web map itself is very dark keep it normal as on the normal webmap everything is abit too dark otherwise
