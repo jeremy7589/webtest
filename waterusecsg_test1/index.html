@@ -514,17 +514,20 @@
 
     }
 
+    /* Customer view: hide the route number pill in the top-right corner. */
+    .route-badge { display:none !important; }
+
 
 
     .media-card {
 
-      position:absolute; left:var(--safe-left); top:calc(var(--safe-top) + 48px);
+      position:absolute; left:var(--safe-left); top:calc(var(--safe-top) + 56px);
 
-      width:min(272px, calc(100vw - 22px)); z-index:20;
+      width:min(430px, calc(100vw - 22px)); z-index:20;
 
-      background:var(--surface); border:1px solid var(--gold-border); border-radius:14px; overflow:hidden;
+      background:rgba(6,10,18,0.78); border:1px solid var(--gold-border); border-radius:14px; overflow:hidden;
 
-      backdrop-filter:blur(16px); box-shadow:var(--shadow); display:none;
+      backdrop-filter:blur(14px); box-shadow:var(--shadow); display:none;
 
     }
 
@@ -564,7 +567,7 @@
 
     .media-frame {
 
-      aspect-ratio:16/9; width:100%; max-height:118px; position:relative; overflow:hidden;
+      aspect-ratio:21/9; width:100%; max-height:176px; position:relative; overflow:hidden;
 
       background:rgba(200,148,58,0.05);
 
@@ -576,43 +579,34 @@
 
     }
 
-    .media-badge {
+    .media-badge { display:none; }
 
-      position:absolute; left:10px; top:10px; background:rgba(6,10,18,0.78);
-
-      border:1px solid var(--gold-border); color:var(--gold-light);
-
-      border-radius:100px; padding:4px 9px; font-size:9px; font-weight:700; letter-spacing:.15em;
-
-      text-transform:uppercase; z-index:2;
-
+    .media-body {
+      position:absolute; left:0; right:0; bottom:0; z-index:2;
+      padding:26px 12px 9px;
+      background:linear-gradient(180deg, transparent 0%, rgba(6,10,18,0.76) 36%, rgba(6,10,18,0.94) 100%);
+      pointer-events:none;
     }
 
-    .media-body { padding:10px 12px 13px; }
-
-    .stop-eyebrow {
-
-      font-size:9px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--gold); margin-bottom:4px;
-
-    }
+    .stop-eyebrow { display:none; }
 
     .media-title {
 
-      font-family:'Cormorant Garamond', serif; font-size:17px; font-weight:600; line-height:1.15;
+      font-family:'Cormorant Garamond', serif; font-size:17px; font-weight:600; line-height:1.1;
 
-      color:var(--cream); margin:0 0 5px;
+      color:var(--cream); margin:0 0 2px;
 
     }
 
     .media-text {
 
-      font-size:11px; font-weight:300; line-height:1.5; color:var(--muted); margin:0;
+      font-size:11px; font-weight:300; line-height:1.35; color:rgba(234,224,204,0.72); margin:0;
 
-      display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 
     }
 
-    .media-chips { margin-top:8px; display:flex; gap:5px; flex-wrap:wrap; }
+    .media-chips { display:none; }
 
     .chip {
 
@@ -703,6 +697,16 @@
       position:absolute; top:3px; width:1.5px; height:12px;
 
       background:rgba(200,148,58,0.38); transform:translateX(-50%);
+
+    }
+
+    .stop-tick::after {
+
+      content:attr(data-time); position:absolute; top:-19px; left:50%; transform:translateX(-50%);
+
+      font-size:8px; font-weight:700; letter-spacing:.08em; white-space:nowrap;
+
+      color:rgba(229,185,106,.82); text-shadow:0 1px 4px rgba(0,0,0,.7);
 
     }
 
@@ -916,6 +920,28 @@
 
       }
 
+    }
+
+    @media (max-width:700px) {
+      .media-card {
+        left:var(--safe-left);
+        right:var(--safe-right);
+        top:calc(var(--safe-top) + 54px);
+        width:auto;
+        max-height:168px;
+        border-radius:13px;
+      }
+      .media-frame {
+        aspect-ratio:22/9;
+        max-height:168px;
+      }
+      .media-body { padding:24px 12px 8px; }
+      .media-title { font-size:16px; }
+      .media-text { font-size:10.5px; -webkit-line-clamp:1; }
+      .media-close {
+        right:8px; top:8px; width:24px; height:24px;
+        background:rgba(6,10,18,0.55);
+      }
     }
 
     @media (max-width:700px) {
@@ -1188,13 +1214,13 @@
 
           <strong id="routeFromTo">Loading…</strong>
 
-          <span id="routeMeta">Published route service</span>
+          <span id="routeMeta">Your private day on the Bay</span>
 
         </div>
 
         <div class="route-label current-stop">
 
-          <div class="stop-progress-label">Now at</div>
+          <div class="stop-progress-label">Now</div>
 
           <div id="currentStopName" style="font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:var(--cream);">—</div>
 
@@ -1232,7 +1258,7 @@
 
       <p>Preparing your journey…</p>
 
-      <small>Loading route layer and story stops</small>
+      <small>Loading your private route</small>
 
       <div><span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></div>
 
@@ -1313,21 +1339,35 @@ require([
 
       subtitle: "Tangalooma Wrecks · Moreton Island",
 
-      meta: "Published Moreton route · Sea La Vie",
+      routeTitle: "New Farm Pick Up → Moreton Island",
+
+      meta: "9:30am–3:30pm · River, wrecks, island beaches",
+
+      segmentLabels: [
+
+        "Cruising the Brisbane River",
+
+        "Cruising the Moreton coast",
+
+        "Cruising north along Moreton Island",
+
+        "Cruising the bay in the afternoon sun"
+
+      ],
 
       zoomCurve: [[0,14.4],[0.18,13.1],[0.42,11.35],[0.76,10.8],[1,11.9]],
 
       stopSpecs: [
 
-        { label:"New Farm Pick Up", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"The city departure. This is where Brisbane pace begins to fall away.", fallbackMedia: [] },
+        { label:"New Farm Pick Up", time:"9:30am", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"Departure from Brisbane into the Bay.", fallbackMedia: [] },
 
-        { label:"South Moreton", aliases:["south moreton","moreton south","moreton island south","moreton south beach"], fallbackText:"Now the island itself becomes the setting and the water turns clearer.", fallbackMedia: [] },
+        { label:"South Moreton", time:"10:45am", aliases:["south moreton","moreton south","moreton island south","moreton south beach"], fallbackText:"Clearer water, island coastline and the first real Moreton feeling.", fallbackMedia: [] },
 
-        { label:"Tangalooma Wrecks", aliases:["tangalooma wrecks","tangalooma","wrecks"], fallbackText:"The signature Moreton arrival — iconic water, snorkelling country and unmistakable island atmosphere.", fallbackMedia: [] },
+        { label:"Tangalooma Wrecks", time:"12:00pm", aliases:["tangalooma wrecks","tangalooma","wrecks"], fallbackText:"Iconic wrecks, clear water and snorkelling.", fallbackMedia: [] },
 
-        { label:"Bulwer", aliases:["bulwer","bulwer beach","bulwer moreton","bulwer moreton island"], fallbackText:"A quieter northern Moreton Island stop with relaxed island atmosphere and clear-water beach edges.", fallbackMedia: [] },
+        { label:"Bulwer", time:"1:30pm", aliases:["bulwer","bulwer beach","bulwer moreton","bulwer moreton island"], fallbackText:"Island beach stop, lunch mood and relaxed Moreton atmosphere.", fallbackMedia: [] },
 
-        { label:"New Farm Pick Up", displayName:"Return to New Farm", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"The return leg back to Brisbane after the island escape.", fallbackMedia: [], reuse:true }
+        { label:"New Farm Pick Up", displayName:"Return to New Farm", time:"3:30pm", aliases:["new farm pick up","new farm boat hub","new farm","boat hub","new farm pickup"], fallbackText:"Return to Brisbane after the island escape.", fallbackMedia: [], reuse:true }
 
       ]
 
@@ -1345,21 +1385,35 @@ require([
 
       subtitle: "Amity Point · North Stradbroke Island",
 
-      meta: "Published Amity route · Sea La Vie",
+      routeTitle: "Manly Marina → North Stradbroke Island",
+
+      meta: "9:30am–3:30pm · Banks, Straddie water, island lunch",
+
+      segmentLabels: [
+
+        "Cruising across Moreton Bay",
+
+        "Cruising toward Amity Point",
+
+        "Lunch stop at Amity Tavern",
+
+        "Cruising back past the banks"
+
+      ],
 
       zoomCurve: [[0,14.4],[0.22,13.1],[0.55,11.6],[0.86,11.05],[1,11.7]],
 
       stopSpecs: [
 
-        { label:"Manly Marina", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"The harbour threshold — urban routine behind, island rhythm ahead.", fallbackMedia: [] },
+        { label:"Manly Marina", time:"9:30am", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"Departure from Manly into the Bay.", fallbackMedia: [] },
 
-        { label:"Amity Banks", aliases:["amity banks","amitybank","banks"], fallbackText:"A quiet stretch of southern bay where the route opens and the city feels far away.", fallbackMedia: [] },
+        { label:"Amity Banks", time:"10:45am", aliases:["amity banks","amitybank","banks"], fallbackText:"Open bay, shallow banks and island water.", fallbackMedia: [] },
 
-        { label:"Amity Tavern", aliases:["amity tavern","amity point tavern","amity point","amity tav"], fallbackText:"The arrival mood of North Stradbroke — local, relaxed and genuinely different.", fallbackMedia: [] },
+        { label:"Amity Tavern", time:"12:00pm", aliases:["amity tavern","amity point tavern","amity point","amity tav"], fallbackText:"Island lunch stop at Amity Tavern.", fallbackMedia: [] },
 
-        { label:"Amity Banks", displayName:"Amity Banks Return", aliases:["amity banks","amitybank","banks"], fallbackText:"The return pass through Amity Banks on the way back across the bay.", fallbackMedia: [], reuse:true },
+        { label:"Amity Banks", displayName:"Amity Banks Return", time:"2:15pm", aliases:["amity banks","amitybank","banks"], fallbackText:"Afternoon return through the banks.", fallbackMedia: [], reuse:true },
 
-        { label:"Manly Marina", displayName:"Return to Manly Marina", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"Back into Manly Marina after the North Stradbroke Island escape.", fallbackMedia: [], reuse:true }
+        { label:"Manly Marina", displayName:"Return to Manly Marina", time:"3:30pm", aliases:["manly marina","manly harbour","manly boat harbour","royal queensland yacht squadron","manly"], fallbackText:"Back into Manly Marina.", fallbackMedia: [], reuse:true }
 
       ]
 
@@ -1806,15 +1860,15 @@ require([
 
     ui.routeSubLabel.textContent = pkg.title;
 
-    ui.routeMeta.textContent = pkg.meta;
+    ui.routeMeta.textContent = pkg.meta || "Your private day on the Bay";
 
-    ui.routeFromTo.textContent = `${state.stops[0] ? state.stops[0].name : "Start"} → ${state.stops[state.stops.length - 1] ? state.stops[state.stops.length - 1].name : "End"}`;
+    ui.routeFromTo.textContent = pkg.routeTitle || `${state.stops[0] ? state.stops[0].name : "Start"} → ${state.stops[state.stops.length - 1] ? state.stops[state.stops.length - 1].name : "End"}`;
 
-    ui.startLabel.textContent = state.stops[0] ? state.stops[0].name : "Start";
+    ui.startLabel.textContent = state.stops[0] ? `${state.stops[0].time || "9:30am"} departure` : "9:30am";
 
-    ui.midLabel.textContent = state.stops.length > 2 ? `${state.stops.length - 2} stops` : "";
+    ui.midLabel.textContent = pkg.segmentLabels && pkg.segmentLabels[0] ? pkg.segmentLabels[0] : "Your journey";
 
-    ui.endLabel.textContent = state.stops[state.stops.length - 1] ? state.stops[state.stops.length - 1].name : "End";
+    ui.endLabel.textContent = state.stops[state.stops.length - 1] ? `${state.stops[state.stops.length - 1].time || "3:30pm"} return` : "3:30pm";
 
 
 
@@ -1909,6 +1963,10 @@ require([
         text: spec.fallbackText,
 
         tag: i === 0 ? "Departure" : (i === pkg.stopSpecs.length - 1 ? "Arrival" : "Journey"),
+
+        time: spec.time || "",
+
+        timeMinutes: parseTimeMinutes(spec.time),
 
         media: spec.fallbackMedia || [],
 
@@ -2405,7 +2463,9 @@ require([
 
       t.style.left = `${f * 100}%`;
 
-      t.title = state.stops[i] ? state.stops[i].name : `Stop ${i+1}`;
+      t.title = state.stops[i] ? `${state.stops[i].time || ""} ${state.stops[i].name}`.trim() : `Stop ${i+1}`;
+
+      if (state.stops[i] && state.stops[i].time) t.dataset.time = state.stops[i].time.replace(":00", "");
 
       ui.stopTicks.appendChild(t);
 
@@ -2477,19 +2537,23 @@ require([
 
     const stop = state.stops[idx];
 
-    const next = state.stops[Math.min(idx + 1, state.stops.length - 1)];
+    const journeyLabel = getJourneyLabel(pkg, state.progress, mediaIdx);
+
+    const routeTime = formatMinutesAsTime(getRouteMinutes(state.progress));
 
 
 
-    ui.currentStopName.textContent = stop ? stop.name : "—";
+    ui.currentStopName.textContent = journeyLabel || (stop ? stop.name : "—");
 
-    ui.routeStatus.textContent = `${Math.round(state.progress * 100)}% · ${next && next !== stop ? next.name : "Arrived"}`;
+    ui.routeStatus.textContent = `${routeTime} · ${journeyLabel || "Your journey"}`;
+
+    ui.midLabel.textContent = journeyLabel || "Your journey";
 
 
 
     view.center = new Point({ x:pt.x, y:pt.y, spatialReference:pt.spatialReference });
 
-    view.zoom = getZoom(pkg.zoomCurve, state.progress);
+    view.zoom = getJourneyZoom(pkg, state.progress, mediaIdx);
 
 
 
@@ -2579,6 +2643,113 @@ require([
 
 
 
+  function getSegmentIndex(progress) {
+
+    if (!state.stops || state.stops.length < 2) return 0;
+
+    for (let i = state.stops.length - 2; i >= 0; i--) {
+
+      if (progress >= state.stops[i].fraction) return i;
+
+    }
+
+    return 0;
+
+  }
+
+
+
+  function getJourneyLabel(pkg, progress, mediaIdx) {
+
+    if (mediaIdx >= 0 && state.stops[mediaIdx]) return state.stops[mediaIdx].name;
+
+    const segIdx = Math.min(getSegmentIndex(progress), (pkg.segmentLabels || []).length - 1);
+
+    return (pkg.segmentLabels || [])[segIdx] || "Cruising the Bay";
+
+  }
+
+
+
+  function parseTimeMinutes(value) {
+
+    const s = String(value || "").trim().toLowerCase();
+
+    const m = s.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+
+    if (!m) return null;
+
+    let h = parseInt(m[1], 10);
+
+    const min = parseInt(m[2] || "0", 10);
+
+    const mer = m[3];
+
+    if (mer === "pm" && h !== 12) h += 12;
+
+    if (mer === "am" && h === 12) h = 0;
+
+    return h * 60 + min;
+
+  }
+
+
+
+  function formatMinutesAsTime(minutes) {
+
+    if (minutes == null || !Number.isFinite(minutes)) return "";
+
+    let total = Math.round(minutes);
+
+    total = ((total % 1440) + 1440) % 1440;
+
+    const h24 = Math.floor(total / 60);
+
+    const min = total % 60;
+
+    const mer = h24 >= 12 ? "pm" : "am";
+
+    let h = h24 % 12;
+
+    if (h === 0) h = 12;
+
+    return `${h}:${String(min).padStart(2, "0")}${mer}`;
+
+  }
+
+
+
+  function getRouteMinutes(progress) {
+
+    if (!state.stops || !state.stops.length) return parseTimeMinutes("9:30am") + progress * 360;
+
+    const timed = state.stops.filter(s => Number.isFinite(s.timeMinutes));
+
+    if (timed.length < 2) return parseTimeMinutes("9:30am") + progress * 360;
+
+    if (progress <= timed[0].fraction) return timed[0].timeMinutes;
+
+    for (let i = 1; i < timed.length; i++) {
+
+      const a = timed[i - 1];
+
+      const b = timed[i];
+
+      if (progress <= b.fraction) {
+
+        const t = (progress - a.fraction) / (b.fraction - a.fraction || 1);
+
+        return a.timeMinutes + clamp(t, 0, 1) * (b.timeMinutes - a.timeMinutes);
+
+      }
+
+    }
+
+    return timed[timed.length - 1].timeMinutes;
+
+  }
+
+
   function updateBoatDirection(progress) {
 
     const prev = pointAtProgress(Math.max(0, progress - 0.01));
@@ -2588,6 +2759,30 @@ require([
     const dx = next.x - prev.x;
 
     ui.boatWrap.classList.toggle("westbound", dx < 0);
+
+  }
+
+
+
+  function getJourneyZoom(pkg, progress, activeMediaIdx) {
+
+    // Stay zoomed out during the open-water journey so the guest understands
+    // the whole movement across the bay. Zoom back in when approaching a stop.
+    const isSmallScreen = window.matchMedia && window.matchMedia("(max-width: 700px)").matches;
+    const closeStopZoom = isSmallScreen ? 13.9 : 14.25;
+    const journeyZoom = isSmallScreen ? 11.05 : 11.35;
+
+    if (activeMediaIdx >= 0) return closeStopZoom;
+
+    if (state.stops && state.stops.length > 1) {
+      const first = state.stops[0].fraction || 0;
+      const last = state.stops[state.stops.length - 1].fraction || 1;
+      const awayFromStart = progress > first + 0.035;
+      const beforeEnd = progress < last - 0.035;
+      if (awayFromStart && beforeEnd) return journeyZoom;
+    }
+
+    return getZoom(pkg.zoomCurve, progress);
 
   }
 
@@ -2629,7 +2824,7 @@ require([
 
 
 
-    ui.stopEyebrow.textContent = `Stop ${idx + 1} of ${state.stops.length}`;
+    ui.stopEyebrow.textContent = `${stop.time ? stop.time + " · " : ""}Stop ${idx + 1}/${state.stops.length}`;
 
     ui.mediaTitle.textContent = stop.name;
 
@@ -2669,15 +2864,16 @@ require([
 
       ui.mediaTypeChip.textContent = item.type === "video" ? "Video" : "Photo";
 
-      const badge = `<div class="media-badge">${item.type === "video" ? "▶ VIDEO" : "📷 PHOTO"}</div>`;
-
       if (item.type === "video") {
 
-        ui.mediaFrame.innerHTML = `${badge}<video src="${encodeURI(item.url)}" autoplay muted loop playsinline controls preload="auto"></video>`;
+        ui.mediaFrame.innerHTML = `<video src="${encodeURI(item.url)}" autoplay muted loop playsinline preload="auto"></video>`;
+
+        const videoEl = ui.mediaFrame.querySelector("video");
+        if (videoEl) videoEl.play().catch(() => {});
 
       } else {
 
-        ui.mediaFrame.innerHTML = `${badge}<img src="${encodeURI(item.url)}" alt="${escapeHtml(item.title || stop.name)}" loading="eager" onerror="this.style.opacity='0.15'">`;
+        ui.mediaFrame.innerHTML = `<img src="${encodeURI(item.url)}" alt="${escapeHtml(item.title || stop.name)}" loading="eager" onerror="this.style.opacity='0.15'">`;
 
       }
 
