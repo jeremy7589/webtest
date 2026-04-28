@@ -96,6 +96,11 @@
 
     .screen.active { opacity:1; pointer-events:auto; }
 
+    /* iOS fix: when returning from the map to the package chooser, fully remove the
+       hidden journey/map screen from hit-testing/layout so Safari does not keep the
+       previous ArcGIS touch lock and block vertical scrolling. */
+    .screen:not(.active) { display:none !important; }
+
 
 
     #chooserScreen {
@@ -369,6 +374,8 @@
       position:absolute; inset:0; background:#08111E;
 
     }
+
+    body:not(.journey-mode) #viewDiv { pointer-events:none; }
 
     #viewDiv .esri-view-root,
 
@@ -976,7 +983,7 @@
 
 
 
-  <div id="chooserScreen" class="screen active">
+  <div id="chooserScreen" class="screen active" tabindex="-1">
 
     <div class="chooser-inner">
 
@@ -1814,9 +1821,13 @@ require([
 
   async function chooseRoute(routeIndex) {
 
+    document.body.classList.add("journey-mode");
+
     ui.chooserScreen.classList.remove("active");
 
     ui.journeyScreen.classList.add("active");
+
+    if (view && view.container) view.container.style.pointerEvents = "auto";
 
     ui.loadingCard.style.display = "block";
 
@@ -1922,9 +1933,25 @@ require([
 
     state.touch.id = null;
 
+    // Hard reset any drag/touch state left by the ArcGIS view on iOS Safari.
+    document.body.classList.remove("journey-mode");
+
+    if (view && view.container) view.container.style.pointerEvents = "none";
+
     ui.journeyScreen.classList.remove("active");
 
     ui.chooserScreen.classList.add("active");
+
+    // Force Safari to recalculate the chooser as the active scroll container after
+    // the hidden map screen is removed. This fixes the issue where the package
+    // menu scrolls on first load but locks after returning from a journey.
+    requestAnimationFrame(() => {
+      ui.chooserScreen.style.overflowY = "hidden";
+      void ui.chooserScreen.offsetHeight;
+      ui.chooserScreen.style.overflowY = "auto";
+      ui.chooserScreen.style.webkitOverflowScrolling = "touch";
+      if (ui.chooserScreen.focus) ui.chooserScreen.focus({ preventScroll:true });
+    });
 
   }
 
