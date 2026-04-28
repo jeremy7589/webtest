@@ -1,1143 +1,1053 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Combined Water Data Explorer</title>
-
-  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.8.0/Chart.min.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>The Journey — Sea La Vie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Nunito:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/dark/main.css" />
   <script src="https://js.arcgis.com/4.32/"></script>
 
   <style>
-    html, body, #viewDiv { 
-      height: 100%; 
-      width: 100%; 
-      margin: 0; 
-      padding: 0; 
-      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; 
+    :root {
+      --bg: #060A10;
+      --surface: rgba(6, 10, 18, 0.9);
+      --surface-mid: rgba(10, 16, 28, 0.82);
+      --gold: #C8943A;
+      --gold-light: #E5B96A;
+      --gold-dim: rgba(200, 148, 58, 0.15);
+      --gold-border: rgba(200, 148, 58, 0.22);
+      --gold-border-strong: rgba(200, 148, 58, 0.48);
+      --cream: #F0E8D5;
+      --text: #EAE0CC;
+      --muted: #8A7D6A;
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+      --shadow-sm: 0 8px 24px rgba(0, 0, 0, 0.4);
+      --boat-size: min(16vw, 130px);
+      --safe-top: max(10px, env(safe-area-inset-top));
+      --safe-right: max(10px, env(safe-area-inset-right));
+      --safe-bottom: max(10px, env(safe-area-inset-bottom));
+      --safe-left: max(10px, env(safe-area-inset-left));
     }
 
-    /* Top bar */
-    .topbar { 
-      position: absolute; 
-      top: 10px; 
-      left: 50%; 
-      transform: translateX(-50%); 
-      background: #fff; 
-      border-radius: 999px; 
-      box-shadow: 0 6px 18px rgba(0,0,0,.15); 
-      padding: 8px; 
-      display: flex; 
-      align-items: center; 
-      z-index: 1100; 
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body, #app {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
     }
-    .segmented { 
-      display: inline-grid; 
-      grid-auto-flow: column; 
-      background: #f1f5f9; 
-      border-radius: 999px; 
-      padding: 4px; 
+
+    body { position: fixed; inset: 0; }
+    #app { position: relative; touch-action: none; user-select: none; }
+
+    /* ─── MAP ─────────────────────────────────────────── */
+    #viewDiv {
+      position: absolute; inset: 0;
+      background: #08111E;
     }
-    .segmented button { 
-      border: none; 
-      background: transparent; 
-      padding: 8px 16px; 
-      border-radius: 999px; 
-      cursor: pointer; 
-      font-weight: 600; 
-      color: #334155; 
+
+    #viewDiv .esri-view-root,
+    #viewDiv .esri-view-surface,
+    #viewDiv canvas {
+      filter: saturate(0.78) brightness(0.72) contrast(1.08) hue-rotate(8deg);
+    }
+
+    /* Gold grain/noise overlay */
+    #viewDiv::after {
+      content: "";
+      position: absolute; inset: 0;
+      pointer-events: none; z-index: 2;
+      background:
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(200,148,58,0.012) 2px, rgba(200,148,58,0.012) 3px),
+        repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(200,148,58,0.008) 2px, rgba(200,148,58,0.008) 3px);
+    }
+
+    /* ─── VIGNETTE ───────────────────────────────────── */
+    .vignette {
+      position: absolute; inset: 0;
+      pointer-events: none; z-index: 4;
+      background: radial-gradient(ellipse at 50% 48%, transparent 28%, rgba(6,10,18,0.55) 72%, rgba(6,10,18,0.82) 100%);
+    }
+
+    /* ─── CROSSHAIR ──────────────────────────────────── */
+    .crosshair {
+      position: absolute; left: 50%; top: 50%;
+      width: 110px; height: 110px;
+      transform: translate(-50%, -50%);
+      pointer-events: none; z-index: 8;
+    }
+    .crosshair::before, .crosshair::after {
+      content: ""; position: absolute;
+      border-radius: 50%;
+      border: 1px solid rgba(200,148,58,0.18);
+    }
+    .crosshair::before { inset: 0; }
+    .crosshair::after { inset: 20px; border-color: rgba(200,148,58,0.1); }
+
+    /* ─── BOAT ───────────────────────────────────────── */
+    .boat-wrap {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -52%);
+      width: var(--boat-size);
+      height: calc(var(--boat-size) * 0.58);
+      z-index: 12; pointer-events: none;
+      filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.55)) drop-shadow(0 2px 6px rgba(200,148,58,0.12));
+    }
+    .boat-wrap svg { width: 100%; height: 100%; overflow: visible; }
+
+    .wake-1 { animation: wakeA 2.8s ease-in-out infinite; transform-origin: 50% 52%; }
+    .wake-2 { animation: wakeA 2.8s ease-in-out infinite 0.5s; transform-origin: 50% 52%; }
+
+    @keyframes wakeA {
+      0%, 100% { opacity: 0.28; transform: scaleX(0.96); }
+      50% { opacity: 0.62; transform: scaleX(1.07); }
+    }
+
+    /* ─── TOP STRIP ──────────────────────────────────── */
+    .top-strip {
+      position: absolute;
+      top: var(--safe-top); left: var(--safe-left); right: var(--safe-right);
+      z-index: 20;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 13px;
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      border-radius: 12px;
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .top-brand {
+      display: flex; align-items: baseline; gap: 8px;
+      min-width: 0;
+    }
+    .brand-name {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.12em;
+      color: var(--gold-light);
       white-space: nowrap;
     }
-    .segmented button.active { 
-      background: #ffffff; 
-      box-shadow: 0 1px 4px rgba(0,0,0,.12); 
-      color:#0f172a; 
+    .brand-sep {
+      width: 1px; height: 12px; background: var(--gold-border);
+      flex-shrink: 0; align-self: center;
+    }
+    .brand-sub {
+      font-family: 'Nunito', sans-serif;
+      font-size: 10px; font-weight: 400; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .top-status {
+      font-family: 'Nunito', sans-serif;
+      font-size: 10px; font-weight: 300; letter-spacing: 0.06em;
+      color: var(--muted); text-align: right;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      min-width: 0;
     }
 
-    /* Bottom controls */
-    #bottomControls { 
-      position: absolute; 
-      bottom: 20px; 
-      left: 50%; 
-      transform: translateX(-50%); 
-      background: rgba(255,255,255,.95); 
-      padding: 10px; 
-      z-index: 1050; 
-      display: flex; 
-      gap: 10px; 
-      border-radius: 10px; 
-      box-shadow: 0 6px 18px rgba(0,0,0,.15); 
+    /* ─── MEDIA CARD ─────────────────────────────────── */
+    .media-card {
+      position: absolute;
+      left: var(--safe-left);
+      top: calc(var(--safe-top) + 44px);
+      width: min(268px, calc(100vw - 22px));
+      z-index: 20;
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      border-radius: 14px;
+      overflow: hidden;
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+      display: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
     }
-    .esri-button { 
-      cursor: pointer; 
-      padding: 10px 16px; 
-      background-color: #007ac2; 
-      border: none; 
-      border-radius: 8px; 
-      color: #fff; 
-      font-weight: 700; 
+    .media-card.show {
+      display: block;
+      animation: slideIn 0.28s ease;
     }
-    .esri-button:disabled { 
-      background: #9aa6b2; 
-      cursor: not-allowed; 
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Right panel */
-    #resultDiv { 
-      position: absolute; 
-      top: 15px; 
-      right: 15px; 
-      background: #fff; 
-      z-index: 100; 
-      box-shadow: 0 4px 16px rgba(0,0,0,.25); 
-      border-radius: 12px; 
-      display: none; 
+    .media-close {
+      position: absolute; right: 9px; top: 9px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: 1px solid var(--gold-border);
+      background: var(--surface);
+      color: var(--muted); font: 16px/1 'Nunito', sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 3;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .media-close:hover { border-color: var(--gold-border-strong); color: var(--gold-light); }
+
+    .media-frame {
+      aspect-ratio: 16 / 9;
+      width: 100%; max-height: 116px;
+      position: relative; overflow: hidden;
+      background: rgba(200,148,58,0.06);
+    }
+    .media-frame img, .media-frame video {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .media-badge {
+      position: absolute; left: 10px; top: 10px;
+      background: rgba(6,10,18,0.75);
+      border: 1px solid var(--gold-border);
+      color: var(--gold-light);
+      border-radius: 100px; padding: 4px 9px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.15em;
+      text-transform: uppercase; z-index: 2;
+    }
+    /* Gold line at top of card */
+    .media-card::before {
+      content: ""; display: block;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold-light), var(--gold), transparent);
+      opacity: 0.7;
     }
 
-    /* Shared stats + list styles */
-    .panel { 
-      width: 450px; 
-      max-height: calc(100vh - 40px); 
-      padding: 18px; 
-      overflow-y: auto; 
-      overflow-x: hidden;
+    .media-body { padding: 10px 12px 12px; }
+
+    .stop-eyebrow {
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--gold);
+      margin-bottom: 4px;
     }
-    .stats { 
-      display: grid; 
-      grid-template-columns: repeat(3, 1fr); 
-      gap: 10px; 
-      margin-bottom: 16px; 
-      text-align: center; 
+    .media-title {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 17px; font-weight: 600; line-height: 1.15;
+      color: var(--cream); margin: 0 0 5px;
     }
-    .stat-card { 
-      background:#f8fafc; 
-      border:1px solid #e2e8f0; 
-      border-radius: 10px; 
-      padding: 10px; 
+    .media-text {
+      font-family: 'Nunito', sans-serif;
+      font-size: 11px; font-weight: 300; line-height: 1.5;
+      color: var(--muted);
+      margin: 0;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden;
     }
-    .stat-title { 
-      font-size: 12px; 
-      text-transform: uppercase; 
-      color:#6b7280; 
-      font-weight:700; 
-      letter-spacing:.3px; 
+    .media-chips {
+      margin-top: 8px; display: flex; gap: 5px; flex-wrap: wrap;
     }
-    .stat-value { 
-      margin-top:6px; 
-      font-weight:800; 
-      font-size:22px; 
-      color:#0ea5e9; 
-    }
-    .stat-unit { 
-      font-size: 12px; 
-      margin-left: 2px; 
-      color:#334155; 
-      font-weight:600; 
+    .chip {
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 3px 8px; border-radius: 100px;
+      background: var(--gold-dim);
+      border: 1px solid var(--gold-border);
+      color: var(--gold);
     }
 
-    /* Heading above formation filters */
-    .panel-heading {
-      font-size: 15px;
-      font-weight: 700;
-      color: #0f172a;
-      margin: 14px 0 6px 0;
-      padding-left: 2px;
+    /* ─── MEDIA PEEK ─────────────────────────────────── */
+    .media-peek {
+      position: absolute;
+      left: var(--safe-left);
+      top: calc(var(--safe-top) + 44px);
+      z-index: 20;
+      display: none; align-items: center; gap: 8px;
+      padding: 7px 11px; border-radius: 100px;
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      backdrop-filter: blur(12px);
+      cursor: pointer;
+      max-width: min(200px, calc(100vw - 22px));
+      box-shadow: var(--shadow-sm);
+      transition: border-color 0.2s;
+    }
+    .media-peek.show { display: inline-flex; }
+    .media-peek:hover { border-color: var(--gold-border-strong); }
+    .peek-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold); flex: 0 0 auto;
+    }
+    .peek-label {
+      font-family: 'Nunito', sans-serif;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+      color: var(--gold-light);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    .legend-list { 
-      display:flex; 
-      flex-direction: column; 
-      gap: 6px; 
-      margin-bottom: 14px; 
+    /* ─── ROUTE CARD ─────────────────────────────────── */
+    .route-card {
+      position: absolute;
+      left: var(--safe-left); right: var(--safe-right); bottom: var(--safe-bottom);
+      z-index: 20;
+      padding: 12px 13px 13px;
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      border-radius: 14px;
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
     }
-    .legend-item { 
-      display:flex; 
-      align-items:center; 
-      justify-content: space-between; 
-      gap:10px; 
-      padding:8px; 
-      border-radius:8px; 
-      cursor:pointer; 
-    }
-    .legend-item:hover { 
-      background:#f1f5f9; 
-    }
-    .legend-left { 
-      display:flex; 
-      align-items:center; 
-      gap:8px; 
-    }
-    .legend-swatch { 
-      width: 12px; 
-      height: 12px; 
-      border-radius: 3px; 
-      border: 1px solid rgba(0,0,0,.15); 
-      flex-shrink: 0; 
-    }
-    .legend-pct { 
-      font-weight: 800; 
-      color:#334155; 
+    .route-card::before {
+      content: ""; display: block;
+      height: 2px; margin: -12px -13px 10px;
+      border-radius: 14px 14px 0 0;
+      background: linear-gradient(90deg, transparent, var(--gold), var(--gold-light), var(--gold), transparent);
+      opacity: 0.55;
     }
 
-    .chart { 
-      height: 250px; 
-      position: relative; 
+    .route-top {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      margin-bottom: 8px;
     }
-    .checksum { 
-      font-size: 12px; 
-      color:#64748b; 
-      margin-top:6px; 
-      text-align:right; 
+    .route-label {
+      font-family: 'Nunito', sans-serif;
+      font-size: 10px; font-weight: 300; color: var(--muted); line-height: 1.3;
     }
-
-    /* Zoom splash */
-    #zoomSplash { 
-      position: absolute; 
-      bottom: 20px; 
-      left: 12px; 
-      background:#fff; 
-      color:#334155; 
-      padding:8px 14px; 
-      border-radius: 999px; 
-      border:2px solid #ef4444; 
-      box-shadow:0 6px 18px rgba(0,0,0,.15); 
-      z-index: 1030; 
-      display:flex; 
-      gap:8px; 
-      align-items:center; 
-      font-weight: 600; 
-      font-size: 14px; 
+    .route-label strong {
+      display: block;
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.04em;
+      color: var(--cream);
     }
-    #zoomSplash.green { 
-      border-color:#22c55e; 
-      color:#16a34a; 
-      background:#dcfce7; 
+    .current-stop {
+      text-align: right; max-width: 48%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .stop-progress-label {
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--gold);
+      margin-bottom: 1px;
     }
 
-    /* Loader */
-    #loader { 
-      display:none; 
-      position:absolute; 
-      top:50%; 
-      left:50%; 
-      transform: translate(-50%, -50%); 
-      z-index:1200; 
-      width: 54px; 
-      height: 54px; 
-      border-radius:50%; 
-      border:6px solid #e5e7eb; 
-      border-top-color:#007ac2; 
-      animation: spin 1s linear infinite; 
+    /* ─── SLIDER ─────────────────────────────────────── */
+    .progress-wrap { position: relative; }
+
+    .stop-ticks {
+      position: absolute;
+      inset: 0px 12px auto 12px;
+      height: 20px;
+      pointer-events: none;
     }
-    @keyframes spin { 
-      to { 
-        transform: translate(-50%, -50%) rotate(360deg); 
-      } 
+    .stop-tick {
+      position: absolute; top: 3px;
+      width: 1.5px; height: 12px;
+      background: rgba(200,148,58,0.4);
+      transform: translateX(-50%);
     }
 
-    .info-message { 
-      padding: 15px; 
-      text-align: center; 
-      font-weight: bold; 
-      color: #555; 
+    input[type="range"] {
+      -webkit-appearance: none; appearance: none;
+      width: 100%; height: 36px; background: transparent; margin: 0;
+      touch-action: pan-x;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px; border-radius: 100px;
+      background: linear-gradient(90deg, rgba(200,148,58,0.55) 0%, rgba(229,185,106,0.85) 100%);
+      border: 1px solid rgba(200,148,58,0.25);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px; height: 22px; margin-top: -9px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 38%, var(--gold-light), var(--gold));
+      border: 2px solid rgba(200,148,58,0.8);
+      box-shadow: 0 4px 16px rgba(200,148,58,0.3), 0 2px 6px rgba(0,0,0,0.5);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-track {
+      height: 6px; border-radius: 100px;
+      background: linear-gradient(90deg, rgba(200,148,58,0.55), rgba(229,185,106,0.85));
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: radial-gradient(circle at 38% 38%, var(--gold-light), var(--gold));
+      border: 2px solid rgba(200,148,58,0.8);
+      cursor: pointer;
+    }
+
+    .stop-name-row {
+      display: flex; justify-content: space-between; gap: 8px;
+      margin-top: 4px;
+    }
+    .stop-name-row span {
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 400; letter-spacing: 0.08em;
+      color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .stop-name-row span:nth-child(2) {
+      text-align: center; flex: 1; color: rgba(200,148,58,0.5);
+    }
+
+    /* ─── HINT STRIP ─────────────────────────────────── */
+    .hint-strip {
+      position: absolute; left: 50%; bottom: calc(var(--safe-bottom) + 116px);
+      transform: translateX(-50%);
+      z-index: 18; pointer-events: none;
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 13px; border-radius: 100px;
+      background: rgba(6,10,18,0.65);
+      border: 1px solid var(--gold-border);
+      backdrop-filter: blur(8px);
+      font-family: 'Nunito', sans-serif;
+      font-size: 9px; font-weight: 400; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--muted);
+      opacity: 1; transition: opacity 1s ease;
+    }
+    .hint-strip.hidden { opacity: 0; }
+    .hint-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--gold); opacity: 0.6; }
+
+    /* ─── LOADING ─────────────────────────────────────── */
+    .loading-card {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 40;
+      padding: 18px 22px;
+      background: var(--surface);
+      border: 1px solid var(--gold-border);
+      border-radius: 14px; text-align: center;
+      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow);
+      min-width: 220px; max-width: calc(100vw - 40px);
+    }
+    .loading-card p {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+      font-size: 16px; font-weight: 400; font-style: italic;
+      color: var(--cream); margin: 0 0 4px;
+    }
+    .loading-card small {
+      font-family: 'Nunito', sans-serif;
+      font-size: 10px; color: var(--muted); letter-spacing: 0.1em;
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────────────── */
+    @media (max-width: 700px) {
+      :root { --boat-size: min(26vw, 108px); }
+      .crosshair { width: 88px; height: 88px; }
+      .brand-name { font-size: 12px; }
+      .media-card { width: min(238px, calc(100vw - 20px)); left: 10px; }
+      .media-peek { left: 10px; }
+      .media-title { font-size: 15px; }
+    }
+    @media (max-width: 480px) {
+      :root { --boat-size: min(30vw, 100px); }
     }
   </style>
 </head>
 <body>
+<div id="app">
   <div id="viewDiv"></div>
-  <div class="topbar">
-    <div class="segmented">
-      <button id="btnCSG" class="active">Groundwater extraction by CSG</button>
-      <button id="btnWU">Groundwater use by other users</button>
+  <div class="vignette"></div>
+  <div class="crosshair"></div>
+
+  <!-- ── BOAT SVG ── -->
+  <div class="boat-wrap" aria-hidden="true">
+    <svg viewBox="0 0 300 174" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="hullG" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1C2C3E"/>
+          <stop offset="60%" stop-color="#243347"/>
+          <stop offset="100%" stop-color="#1A2838"/>
+        </linearGradient>
+        <linearGradient id="deckG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2A3F52"/>
+          <stop offset="100%" stop-color="#1A2C3D"/>
+        </linearGradient>
+        <linearGradient id="accentG" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#A07028"/>
+          <stop offset="50%" stop-color="#E5B96A"/>
+          <stop offset="100%" stop-color="#A07028"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Wake -->
+      <ellipse class="wake-1" cx="148" cy="90" rx="148" ry="38" fill="rgba(180,210,255,0.07)"/>
+      <ellipse class="wake-2" cx="148" cy="90" rx="112" ry="26" fill="rgba(180,210,255,0.08)"/>
+
+      <!-- Bow foam lines -->
+      <path d="M26 60 Q0 63 -18 80" stroke="rgba(200,225,255,0.45)" stroke-width="6" fill="none" stroke-linecap="round"/>
+      <path d="M30 67 Q8 76 -5 92" stroke="rgba(200,225,255,0.28)" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+      <!-- Hull shadow -->
+      <path d="M24 56 L264 40 L292 62 L165 82 L40 82 Z" fill="rgba(0,0,0,0.28)" transform="translate(3,7)"/>
+      <!-- Hull main -->
+      <path d="M24 52 L264 36 L292 58 L165 78 L40 78 Z" fill="url(#hullG)" stroke="rgba(200,148,58,0.45)" stroke-width="1.5"/>
+      <!-- Gold waterline stripe -->
+      <path d="M28 68 L270 52 L288 58 L165 76 L43 75 Z" fill="url(#accentG)" opacity="0.18"/>
+
+      <!-- Deck / cabin -->
+      <path d="M86 24 L196 12 L222 30 L222 44 L88 50 Z" fill="url(#deckG)" stroke="rgba(200,148,58,0.35)" stroke-width="1.2"/>
+      <!-- Windscreen -->
+      <path d="M165 14 L190 22 L190 34 L165 36 Z" fill="rgba(120,190,230,0.18)" stroke="rgba(200,148,58,0.3)" stroke-width="0.8"/>
+      <!-- Antenna -->
+      <line x1="200" y1="14" x2="204" y2="2" stroke="rgba(200,148,58,0.5)" stroke-width="1.2"/>
+      <!-- Cleats -->
+      <circle cx="54" cy="65" r="3" fill="rgba(200,148,58,0.55)"/>
+      <circle cx="172" cy="58" r="3" fill="rgba(200,148,58,0.55)"/>
+      <!-- Deck detail line -->
+      <path d="M90 38 L190 28" stroke="rgba(200,148,58,0.2)" stroke-width="1.5"/>
+    </svg>
+  </div>
+
+  <!-- ── TOP STRIP ── -->
+  <div class="top-strip">
+    <div class="top-brand">
+      <span class="brand-name">SEA LA VIE</span>
+      <div class="brand-sep"></div>
+      <span class="brand-sub" id="routeSubLabel">The Journey</span>
+    </div>
+    <div class="top-status" id="routeStatus">Preparing…</div>
+  </div>
+
+  <!-- ── MEDIA CARD ── -->
+  <div class="media-card" id="mediaCard">
+    <button class="media-close" id="mediaCloseBtn" aria-label="Close">×</button>
+    <div class="media-frame" id="mediaFrame"></div>
+    <div class="media-body">
+      <div class="stop-eyebrow" id="stopEyebrow">Stop 1 of 5</div>
+      <h2 class="media-title" id="mediaTitle">Loading…</h2>
+      <p class="media-text" id="mediaText">Preparing route.</p>
+      <div class="media-chips">
+        <span class="chip" id="stopTagChip">Journey</span>
+        <span class="chip" id="mediaTypeChip">—</span>
+      </div>
     </div>
   </div>
-  <div id="bottomControls">
-    <button id="polygonBtn" class="esri-button">Draw Polygon</button>
-    <button id="clearBtn" class="esri-button" disabled>Clear</button>
+
+  <!-- ── PEEK BUTTON ── -->
+  <button class="media-peek" id="mediaPeekBtn" aria-label="Show stop info">
+    <span class="peek-dot"></span>
+    <span class="peek-label" id="mediaPeekLabel">Stop Info</span>
+  </button>
+
+  <!-- ── HINT ── -->
+  <div class="hint-strip" id="hintStrip">
+    <span class="hint-dot"></span>
+    <span>Drag to explore the route</span>
+    <span class="hint-dot"></span>
   </div>
-  <aside id="resultDiv" class="panel"></aside>
-  <div id="zoomSplash">
-    <strong>Zoom:</strong>
-    <span id="zoomMeters">—</span>
-    <span id="zoomHint">Zoom in to see labels</span>
+
+  <!-- ── ROUTE CARD ── -->
+  <div class="route-card">
+    <div class="route-top">
+      <div class="route-label">
+        <strong id="routeFromTo">Manly → Tangalooma</strong>
+        <span id="routeMeta">Private Charter · Moreton Bay</span>
+      </div>
+      <div class="route-label current-stop">
+        <div class="stop-progress-label">Now at</div>
+        <div id="currentStopName" style="font-family:'Cormorant Garamond',serif;font-size:13px;font-weight:600;color:var(--cream);">—</div>
+      </div>
+    </div>
+    <div class="progress-wrap">
+      <div class="stop-ticks" id="stopTicks"></div>
+      <input id="progressSlider" type="range" min="0" max="1000" step="1" value="0" aria-label="Route progress"/>
+    </div>
+    <div class="stop-name-row">
+      <span id="startLabel">Manly Harbour</span>
+      <span id="midLabel"></span>
+      <span id="endLabel">Tangalooma</span>
+    </div>
   </div>
-  <div id="loader"></div>
+
+  <!-- ── LOADING ── -->
+  <div class="loading-card" id="loadingCard">
+    <p>Preparing your journey…</p>
+    <small>Loading Moreton Bay chart</small>
+  </div>
+</div>
 
 <script>
 require([
-  "esri/Map", "esri/views/SceneView", "esri/layers/FeatureLayer",
-  "esri/renderers/HeatmapRenderer", "esri/renderers/SimpleRenderer",
-  "esri/widgets/Legend", "esri/widgets/Sketch/SketchViewModel",
-  "esri/layers/GraphicsLayer", "esri/geometry/geometryEngine"
-], function(
-  Map, SceneView, FeatureLayer,
-  HeatmapRenderer, SimpleRenderer,
-  Legend, SketchViewModel,
-  GraphicsLayer, geometryEngine
-){
-  // === Symbology & labels ===
-  const csgHeatmapRenderer = new HeatmapRenderer({
-    field: "SUMVOLUME",
-    colorStops: [
-      { color: "rgba(255,255,255,0)", ratio: 0 },
-      { color: "#e0f7fa", ratio: 0.2 },
-      { color: "#b2ebf2", ratio: 0.4 },
-      { color: "#81d4fa", ratio: 0.6 },
-      { color: "#4fc3f7", ratio: 0.8 },
-      { color: "#29b6f6", ratio: 1 }
-    ],
-    maxDensity: 0.8,
-    legendOptions: { title: " " }
-  });
+  "esri/config",
+  "esri/WebMap",
+  "esri/views/MapView",
+  "esri/Graphic",
+  "esri/geometry/Point",
+  "esri/geometry/Polyline"
+], function(esriConfig, WebMap, MapView, Graphic, Point, Polyline) {
 
-  const csgCalloutRenderer = new SimpleRenderer({
-    symbol: {
-      type: "point-3d",
-      symbolLayers: [{
-        type: "icon",
-        resource: { primitive: "circle" },
-        material: { color: "#ff8c42" },
-        size: 5
+  esriConfig.portalUrl = "https://qgsp.maps.arcgis.com";
+
+  const WEBMAP_ID = "5f8e05855b62491695d9ef0fc6671480";
+  const TARGET_LAYER_ITEM_ID = "fa7a1c8a3684461d961dc55557a2ea38";
+
+  // ── DOM refs
+  const ui = {
+    mediaCard:       document.getElementById("mediaCard"),
+    mediaFrame:      document.getElementById("mediaFrame"),
+    mediaTitle:      document.getElementById("mediaTitle"),
+    mediaText:       document.getElementById("mediaText"),
+    stopEyebrow:     document.getElementById("stopEyebrow"),
+    stopTagChip:     document.getElementById("stopTagChip"),
+    mediaTypeChip:   document.getElementById("mediaTypeChip"),
+    mediaCloseBtn:   document.getElementById("mediaCloseBtn"),
+    mediaPeekBtn:    document.getElementById("mediaPeekBtn"),
+    mediaPeekLabel:  document.getElementById("mediaPeekLabel"),
+    routeSubLabel:   document.getElementById("routeSubLabel"),
+    routeFromTo:     document.getElementById("routeFromTo"),
+    routeMeta:       document.getElementById("routeMeta"),
+    routeStatus:     document.getElementById("routeStatus"),
+    currentStopName: document.getElementById("currentStopName"),
+    loadingCard:     document.getElementById("loadingCard"),
+    progressSlider:  document.getElementById("progressSlider"),
+    startLabel:      document.getElementById("startLabel"),
+    midLabel:        document.getElementById("midLabel"),
+    endLabel:        document.getElementById("endLabel"),
+    stopTicks:       document.getElementById("stopTicks"),
+    hintStrip:       document.getElementById("hintStrip"),
+  };
+
+  // ── Branded fallback stops for Sea La Vie
+  const brandedStops = [
+    {
+      name: "Manly Boat Harbour",
+      tag: "Departure",
+      text: "Your escape begins at Queensland's largest boat harbour — just 45 minutes from Brisbane CBD. Step aboard Sea La Vie. From this moment, every notification, every obligation, every schedule simply ceases to exist.",
+      longitude: 153.1751,
+      latitude: -27.4673,
+      media: [{
+        type: "image",
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Brisbane_CBD_from_Kangaroo_Point%2C_Queensland%2C_Australia%2C_2020%2C_01.jpg/1280px-Brisbane_CBD_from_Kangaroo_Point%2C_Queensland%2C_Australia%2C_2020%2C_01.jpg",
+        title: "Brisbane Departure",
+        caption: "The city you are leaving behind"
       }]
-    }
-  });
-
-  const csgLabelingInfo = [{
-    labelPlacement: "above-center",
-    labelExpressionInfo: { expression: "$feature.BORE_NAME" },
-    symbol: {
-      type: "label-3d",
-      symbolLayers: [{
-        type: "text",
-        material: { color: [255, 255, 255, 1] },
-        halo: { color: [0, 0, 0, 0.7], size: 1 },
-        font: { family: "Arial", size: 12, weight: "bold" }
-      }],
-      verticalOffset: { screenLength: 80, maxWorldLength: 200, minWorldLength: 50 },
-      callout: { type: "line", size: 0.5, color: [0, 0, 0, 0.7] }
-    }
-  }];
-
-  const wuHeatmapRenderer = new HeatmapRenderer({
-    field: "ML_Bore",
-    colorStops: [
-      { color: "rgba(230, 245, 255, 0)", ratio: 0 },
-      { color: "rgba(179, 229, 252, 0.7)", ratio: 0.1 },
-      { color: "rgba(66, 165, 245, 0.8)", ratio: 0.4 },
-      { color: "rgba(21, 101, 192, 0.9)", ratio: 0.8 },
-      { color: "rgba(13, 71, 161, 1.0)", ratio: 1.0 }
-    ],
-    maxDensity: 4,
-    minDensity: 0,
-    radius: 12,
-    legendOptions: { title: " " }
-  });
-
-  const wuCalloutRenderer = new SimpleRenderer({
-    symbol: {
-      type: "point-3d",
-      symbolLayers: [{
-        type: "icon",
-        resource: { primitive: "circle" },
-        material: { color: "black" },
-        size: 4
-      }]
-    }
-  });
-
-  const wuLabelingInfo = [{
-    labelPlacement: "above-center",
-    labelExpressionInfo: { expression: "\"RN: \" + $feature.RN" },
-    symbol: {
-      type: "label-3d",
-      symbolLayers: [{
-        type: "text",
-        material: { color: [255, 255, 255, 1] },
-        halo: { color: [0, 0, 0, 0.7], size: 1 },
-        font: { family: "Arial", size: 10, weight: "bold" }
-      }],
-      verticalOffset: { screenLength: 40, maxWorldLength: 200, minWorldLength: 20 },
-      callout: { type: "line", size: 0.5, color: [0,0,0], border: { color: [255,255,255,0.8] } }
-    }
-  }];
-
-  // === Layers ===
-  const csgLayer = new FeatureLayer({
-    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/ArcGIS/rest/services/CSG_prod_and_plan_UWIR2025_3_WFL1/FeatureServer/2",
-    renderer: csgHeatmapRenderer,
-    outFields: ["*"],
-    definitionExpression: "Model_Well_Type = 'Existing'",
-    popupTemplate: {
-      title: "CSG Well Information",
-      content: function (event) {
-        const attrs = event.graphic.attributes;
-        const name = attrs.BORE_NAME || "Unknown";
-
-        // Ann_rate and Current_rate both formatted nicely
-        const ann = attrs.Ann_rate;
-        const curr = attrs.Current_rate;
-
-        const formattedAnn = ann == null || isNaN(ann)
-          ? "—"
-          : Number(ann).toFixed(2);
-
-        const formattedCurr = curr == null || isNaN(curr)
-          ? "—"
-          : Number(curr).toFixed(2);
-
-        return `
-          Well name: ${name}<br>
-          Annual rate since commencement: ${formattedAnn} ML/year<br>
-          Current rate: ${formattedCurr} ML/year
-        `;
-      }
-    }
-  });
-
-  // *** UPDATED LAYER ***
-  const wuLayer = new FeatureLayer({
-    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/Map3_WFL1/FeatureServer/2",
-    renderer: wuHeatmapRenderer,
-    outFields: ["*"],
-    visible: false,
-    popupTemplate: {
-      title: "Water Usage Details",
-      content: `RN: {RN}<br>
-                Bore Status: {BORE_STATUS}<br>
-                Formation: {FORMATION}<br>
-                Total volume per year: {Rate__avg_prev_3yr_} ML/year`
-    }
-  });
-
-  const townsLayer = new FeatureLayer({
-    url: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/OGIA_Basemap_WFL1/FeatureServer/1",
-    renderer: { 
-      type: "simple",
-      symbol: { 
-        type: "simple-marker",
-        style: "square",
-        size: 8,
-        color: "black",
-        outline: { color: "white", width: 1 }
-      }
     },
-    labelingInfo: [{
-      labelExpressionInfo: { expression: "$feature.NAME" },
-      symbol: {
-        type: "label-3d",
-        symbolLayers: [{
-          type: "text",
-          material: { color: "black" },
-          halo: { color: "white", size: 1 },
-          font: { family: "Arial", size: 10 }
-        }],
-        callout: { type: "line", size: .5, color: "black" }
-      }
-    }],
-    elevationInfo: { mode: "on-the-ground" }
-  });
-
-  // === Map & View ===
-  const map = new Map({ 
-    basemap: "satellite", 
-    layers: [csgLayer, wuLayer, townsLayer] 
-  });
-
-  const view = new SceneView({ 
-    container: "viewDiv", 
-    map, 
-    camera: { 
-      position: [150.0, -32.0, 400000], 
-      tilt: 55 
-    } 
-  });
-  
-  const legend = new Legend({ 
-    view, 
-    layerInfos: [{ 
-      layer: csgLayer, 
-      title: "CSG Water Production (ML)" 
-    }] 
-  });
-  view.ui.add(legend, "bottom-right");
-
-  // Sketch
-  const sketchLayer = new GraphicsLayer();
-  map.add(sketchLayer);
-
-  const sketchVM = new SketchViewModel({
-    view,
-    layer: sketchLayer,
-    polygonSymbol: { 
-      type: "simple-fill", 
-      color: [0,0,0,.2], 
-      outline: { color: "#2563eb", width: 1.5 } 
+    {
+      name: "The Open Bay",
+      tag: "Freedom",
+      text: "Brisbane's skyline shrinks to a smudge on the horizon. Moreton Bay's 1,500 km² of Marine Park opens up around you. No schedule. No strangers on your deck. Just the sound of the hull cutting clean water.",
+      longitude: 153.2280,
+      latitude: -27.4050,
+      media: [{
+        type: "image",
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Moreton_Bay.jpg/1280px-Moreton_Bay.jpg",
+        title: "Open Moreton Bay",
+        caption: "1,500 km² of protected marine park"
+      }]
+    },
+    {
+      name: "Dolphin Waters",
+      tag: "Marine Life",
+      text: "Moreton Bay is home to one of Australia's largest resident bottlenose dolphin populations. Out here they find the bow wave and stay — wild, effortless, unhurried. Jeremy's marine biology background means you'll understand exactly what you're witnessing.",
+      longitude: 153.2850,
+      latitude: -27.3100,
+      media: [{
+        type: "image",
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Tursiops_truncatus_01.jpg/1280px-Tursiops_truncatus_01.jpg",
+        title: "Bottlenose Dolphins",
+        caption: "Wild resident bottlenose dolphins, Moreton Bay"
+      }]
+    },
+    {
+      name: "Peel Island — Teerk Roo Ra",
+      tag: "Hidden Gem",
+      text: "A national park so pristine that Jeremy keeps his favourite anchor spots private. Horseshoe Bay's crystal-clear shallows are perfect for a swim or snorkel — and the only other people you'll see are the ones you brought.",
+      longitude: 153.3420,
+      latitude: -27.2500,
+      media: [{
+        type: "image",
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Peel_Island_QLD_1.jpg/1280px-Peel_Island_QLD_1.jpg",
+        title: "Peel Island",
+        caption: "Teerk Roo Ra National Park — private anchorage"
+      }]
+    },
+    {
+      name: "The Tangalooma Wrecks",
+      tag: "Signature Stop",
+      text: "Fifteen ships deliberately scuttled between 1963 and 1984 now form Queensland's #1 snorkel site. Over 200 fish species. 130 coral species. Turtles, wobbegongs, rays — all making these rusted hulls home. Time stops completely underwater.",
+      longitude: 153.3650,
+      latitude: -27.1680,
+      media: [{
+        type: "image",
+        url: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Tangalooma_Wrecks_aerial.JPG/1280px-Tangalooma_Wrecks_aerial.JPG",
+        title: "The Tangalooma Wrecks",
+        caption: "15 scuttled ships · Queensland's #1 snorkel site"
+      }]
     }
+  ];
+
+  // ── State
+  const state = {
+    view: null,
+    stops: [],
+    fractions: [],
+    progress: 0,
+    currentStopIdx: 0,
+    highlightGraphic: null,
+    cycleTimer: null,
+    collapseTimer: null,
+    hintHidden: false,
+    touch: { active: false, id: null, startX: 0, startProg: 0 }
+  };
+
+  // ── Map init
+  const webmap = new WebMap({ portalItem: { id: WEBMAP_ID } });
+  const view = new MapView({
+    container: "viewDiv",
+    map: webmap,
+    center: [153.27, -27.32],
+    zoom: 9,
+    constraints: { snapToZoom: false, rotationEnabled: false },
+    navigation: { momentumEnabled: false, browserTouchPanEnabled: false },
+    ui: { components: [] }
   });
+  state.view = view;
 
-  // UI state
-  let activeMode = 'CSG';
-  let lastGeom = null;
-  let localCalloutLayer = null;
+  // ── Events
+  ui.progressSlider.addEventListener("input", e => setProgress(+e.target.value / 1000));
+  ui.mediaCloseBtn.addEventListener("click", e => { e.stopPropagation(); collapseMedia(); });
+  ui.mediaPeekBtn.addEventListener("click", e => { e.stopPropagation(); showMedia(false); });
 
-  // Cache variables for CSG category volumes
-  let csgCategoryVolumes = {}; // {category: volume}
-  let csgVolumeTotal = 0;
-  
-  // Cache variables for WU category volumes
-  let wuCategoryVolumes = {}; // {category: volume}
-  let wuVolumeTotal = 0;
+  window.addEventListener("wheel", e => {
+    if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    setProgress(state.progress + e.deltaY * 0.00045);
+    hideHint();
+  }, { passive: false });
 
-  // refs
-  const loader = document.getElementById('loader');
-  const resultDiv = document.getElementById('resultDiv');
+  const app = document.getElementById("app");
+  app.addEventListener("touchstart", onTouchStart, { passive: false });
+  app.addEventListener("touchmove",  onTouchMove,  { passive: false });
+  app.addEventListener("touchend",   onTouchEnd,   { passive: false });
+  app.addEventListener("touchcancel",onTouchEnd,   { passive: false });
+  app.addEventListener("pointerdown", onPtrDown);
+  app.addEventListener("pointermove", onPtrMove);
+  app.addEventListener("pointerup",   onPtrEnd);
+  app.addEventListener("pointercancel", onPtrEnd);
+  window.addEventListener("resize", debounce(() => view && view.resize(), 120));
 
-  // Controls
-  document.getElementById("polygonBtn").onclick = () => sketchVM.create("polygon");
-  document.getElementById("clearBtn").onclick = () => clearAll();
-  document.getElementById('btnCSG').onclick = () => setMode('CSG');
-  document.getElementById('btnWU').onclick = () => setMode('WU');
-
-  sketchVM.on("create", (e) => { 
-    if (e.state === "complete") { 
-      lastGeom = e.graphic.geometry; 
-      document.getElementById("clearBtn").disabled = false; 
-      runAnalysis(lastGeom); 
-    } 
-  });
-
-  function clearAll(){ 
-    sketchLayer.removeAll(); 
-    resultDiv.style.display = 'none'; 
-    lastGeom = null; 
-    document.getElementById("clearBtn").disabled = true; 
-  }
-
-  function setMode(mode){
-    if(activeMode === mode) return;
-    const cam = view.camera.clone();
-    activeMode = mode; 
-    const isCSG = activeMode === 'CSG';
-
-    csgLayer.visible = isCSG; 
-    wuLayer.visible = !isCSG;
-
-    legend.layerInfos = [{
-      layer: isCSG ? csgLayer : wuLayer, 
-      title: isCSG ? "CSG Water Production (ML)" : "Water Use Volume (ML)" 
-    }];
-
-    document.getElementById('btnCSG').classList.toggle('active', isCSG);
-    document.getElementById('btnWU').classList.toggle('active', !isCSG);
-
-    view.camera = cam;
-    updateLocalCallouts();
-    if(lastGeom) {
-      runAnalysis(lastGeom); 
-    } else {
-      resultDiv.style.display = 'none';
-    }
-  }
-
-  // === Zoom splash + local callouts ===
-  let lastUpdateCenter = null, lastZoomState = null;
-  view.watch(["scale","center"], () => {
-    const isZoomed = view.scale < 90000; 
-    const zoomMeters = Math.round(view.resolution * view.width);
-    document.getElementById('zoomMeters').textContent = `${(zoomMeters/1000).toFixed(1)} km`;
-
-    const splash = document.getElementById('zoomSplash'); 
-    const hint = document.getElementById('zoomHint');
-
-    splash.classList.toggle('green', isZoomed);
-    hint.textContent = isZoomed 
-      ? (activeMode==='CSG' ? 'Well name labels visible' : 'RN labels visible') 
-      : (activeMode==='CSG' ? 'Zoom in for well names' : 'Zoom in for RNs');
-
-    const moved = lastUpdateCenter 
-      ? geometryEngine.distance(view.center, lastUpdateCenter, 'meters') 
-      : Infinity;
-
-    if (isZoomed && (moved > 9000 || lastZoomState !== isZoomed)) { 
-      updateLocalCallouts(); 
-      lastUpdateCenter = view.center.clone(); 
-    }
-
-    if (!isZoomed && localCalloutLayer) { 
-      map.remove(localCalloutLayer); 
-      localCalloutLayer = null; 
-    }
-    lastZoomState = isZoomed;
-  });
-
-  async function updateLocalCallouts(){
+  // ── Load map
+  view.when(async () => {
     try {
-      const layer = activeMode==='CSG' ? csgLayer : wuLayer;
-      const renderer = activeMode==='CSG' ? csgCalloutRenderer : wuCalloutRenderer;
-      const labeling = activeMode==='CSG' ? csgLabelingInfo : wuLabelingInfo;
+      await webmap.loadAll();
+      const layer = await findPointLayer(webmap);
+      if (!layer) throw new Error("No point layer");
+      await layer.load();
+      const stops = await loadStops(layer);
+      if (!stops.length) throw new Error("No stops");
+      applyStops(stops, layer.title || "Sea La Vie Charter Route", false);
+    } catch (err) {
+      console.warn("Using branded fallback:", err.message);
+      applyStops(brandedStops, "Manly → Tangalooma Wrecks", true);
+    }
+  });
 
-      const q = layer.createQuery(); 
-      q.geometry = view.center; 
-      q.distance = 9000; 
-      q.units = 'meters';
+  // ── Layer finder
+  async function findPointLayer(wm) {
+    const all = [];
+    const collect = lc => { if (!lc) return; lc.forEach(l => { all.push(l); if (l.layers) collect(l.layers); }); };
+    collect(wm.layers);
+    const features = all.filter(l => l && l.type === "feature");
+    const exact = features.find(l => l.portalItem?.id === TARGET_LAYER_ITEM_ID && l.geometryType === "point");
+    if (exact) return exact;
+    const points = [];
+    for (const l of features) {
+      try { await l.load(); if (l.geometryType === "point") points.push(l); } catch(e) {}
+    }
+    return points.find(l => l.capabilities?.data?.supportsAttachment) || points[0] || null;
+  }
 
-      const { features } = await layer.queryFeatures(q);
-      if(localCalloutLayer) map.remove(localCalloutLayer);
-
-      if(!features || !features.length){ 
-        localCalloutLayer = null; 
-        return; 
+  // ── Load stops from layer
+  async function loadStops(layer) {
+    const q = layer.createQuery();
+    q.where = layer.definitionExpression || "1=1";
+    q.returnGeometry = true;
+    q.outFields = ["*"];
+    q.orderByFields = guessOrderFields(layer.fields || []);
+    const res = await layer.queryFeatures(q);
+    let feats = (res.features || []).filter(f => f.geometry && isFinite(f.geometry.longitude ?? f.geometry.x));
+    if (!feats.length) return [];
+    if (!q.orderByFields?.length) feats = sortSpatially(feats);
+    const oidField = layer.objectIdField || (layer.fields || []).find(f => f.type === "oid")?.name || "OBJECTID";
+    const stops = [];
+    for (let i = 0; i < feats.length; i++) {
+      const f = feats[i]; const a = f.attributes || {};
+      const oid = a[oidField];
+      const name = pickVal(a, ["Name","NAME","Title","TITLE","Stop","STOP","Location","site_name","Caption"]) || `Stop ${i+1}`;
+      const text = pickVal(a, ["Description","DESCRIPTION","Details","Narrative","Text","Notes","Summary","Caption"]) || `Charter stop on Moreton Bay.`;
+      const tag  = pickVal(a, ["Tag","TYPE","Category","Type","tag","category"]) || "Stop";
+      let media = [];
+      if (oid != null && layer.capabilities?.data?.supportsAttachment) {
+        try {
+          const am = await layer.queryAttachments({ objectIds: [oid] });
+          media = (am[oid] || []).map(att => attToMedia(att, layer.url, oid, name)).filter(Boolean);
+        } catch(e) {}
       }
-
-      localCalloutLayer = new FeatureLayer({
-        source: features, 
-        fields: layer.fields, 
-        objectIdField: layer.objectIdField,
-        geometryType: 'point', 
-        spatialReference: view.spatialReference,
-        elevationInfo: { mode: "relative-to-ground" }, 
-        renderer, 
-        labelingInfo: labeling
+      stops.push({
+        name, text, tag,
+        longitude: f.geometry.longitude ?? f.geometry.x,
+        latitude:  f.geometry.latitude  ?? f.geometry.y,
+        media
       });
-      map.add(localCalloutLayer);
-    } catch(e){ 
-      console.warn('callouts error', e); 
     }
+    return stops;
   }
 
-  // === Analysis ===
-  let trendChart = null;
-
-  function showPanel(){ 
-    resultDiv.style.display = 'block'; 
+  function attToMedia(att, url, oid, title) {
+    const raw = (att.name || att.filename || "").toLowerCase();
+    const ct  = (att.contentType || "").toLowerCase();
+    const isVid = ct.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(raw);
+    const isImg = ct.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp)$/i.test(raw);
+    if (!isVid && !isImg) return null;
+    const u = att.url || (url && att.id != null ? `${url}/${oid}/attachments/${att.id}` : null);
+    if (!u) return null;
+    return { type: isVid ? "video" : "image", url: u, title: att.name || title, caption: att.contentType || "" };
   }
 
-  function resetPanel(){ 
-    resultDiv.innerHTML = ''; 
+  // ── Apply stops
+  function applyStops(stops, title, isFallback) {
+    state.stops = stops;
+    state.fractions = buildFractions(stops);
+    state.progress = 0; state.currentStopIdx = 0;
+    ui.progressSlider.value = "0";
+
+    const first = stops[0], last = stops[stops.length - 1];
+    ui.routeFromTo.textContent = `${first?.name || "Start"} → ${last?.name || "End"}`;
+    ui.routeMeta.textContent = isFallback ? "Private Charter · Moreton Bay Marine Park" : "Sea La Vie Charter Route";
+    ui.startLabel.textContent = first?.name || "Start";
+    ui.endLabel.textContent   = last?.name  || "End";
+    ui.midLabel.textContent   = stops.length > 2 ? `${stops.length - 2} stop${stops.length - 2 === 1 ? "" : "s"}` : "";
+
+    renderTicks();
+    drawGraphics();
+    fitView();
+    renderProgress(true);
+    ui.loadingCard.style.display = "none";
   }
 
-  // Helper: compute average of fixed years 2022, 2023, 2024 from trend
-  function computeThreeYearAvgFromTrendUsingFixedYears(trend) {
-    if (!trend || !trend.labels || !trend.values) return 0;
-
-    // Build lookup {yearString: value}
-    const lookup = {};
-    trend.labels.forEach((label, i) => {
-      lookup[label] = Number(trend.values[i] || 0);
+  // ── Draw route graphics
+  function drawGraphics() {
+    const g = state.view.graphics; g.removeAll();
+    if (state.stops.length >= 2) {
+      g.add(new Graphic({
+        geometry: new Polyline({ paths: [state.stops.map(s => [s.longitude, s.latitude])], spatialReference: { wkid: 4326 } }),
+        symbol: { type: "simple-line", color: [200, 148, 58, 0.65], width: 2.5, style: "short-dot" }
+      }));
+    }
+    state.stops.forEach((s, i) => {
+      const isKey = i === 0 || i === state.stops.length - 1;
+      g.add(new Graphic({
+        geometry: new Point({ longitude: s.longitude, latitude: s.latitude, spatialReference: { wkid: 4326 } }),
+        symbol: { type: "simple-marker", style: "circle",
+          size: isKey ? 10 : 7,
+          color: isKey ? [200, 148, 58, 0.9] : [200, 148, 58, 0.5],
+          outline: { color: [240, 232, 213, 0.75], width: 1.5 }
+        }
+      }));
     });
-
-    const y2022 = lookup["2022"] || 0;
-    const y2023 = lookup["2023"] || 0;
-    const y2024 = lookup["2024"] || 0;
-
-    const avg = (y2022 + y2023 + y2024) / 3;
-    return avg;
+    state.highlightGraphic = new Graphic({
+      geometry: new Point({ longitude: state.stops[0].longitude, latitude: state.stops[0].latitude, spatialReference: { wkid: 4326 } }),
+      symbol: { type: "simple-marker", style: "circle", size: 20,
+        color: [200, 148, 58, 0],
+        outline: { color: [200, 148, 58, 0.75], width: 2 }
+      }
+    });
+    g.add(state.highlightGraphic);
   }
 
-  // === Analysis runner ===
-  async function runAnalysis(geometry){
-    loader.style.display = 'block'; 
-    resetPanel();
-    try {
-      if(activeMode === 'CSG'){
-        const [catAgg, overallBase, trend] = await Promise.all([
-          fetchCSGCategoryVolumes(geometry), 
-          fetchCSGOverallStats(geometry, null),
-          fetchCSGTrend(geometry, null)
-        ]);
+  function fitView() {
+    const xs = state.stops.map(s => s.longitude), ys = state.stops.map(s => s.latitude);
+    state.view.goTo({
+      target: { xmin: Math.min(...xs), ymin: Math.min(...ys), xmax: Math.max(...xs), ymax: Math.max(...ys), spatialReference: { wkid: 4326 } },
+      padding: { left: 50, right: 50, top: 90, bottom: 160 }
+    }, { animate: false }).catch(() => {});
+  }
 
-        csgCategoryVolumes = catAgg.volumes; 
-        csgVolumeTotal = catAgg.total;      
+  // ── Progress
+  function setProgress(v) {
+    state.progress = clamp(v, 0, 1);
+    ui.progressSlider.value = String(Math.round(state.progress * 1000));
+    renderProgress();
+    hideHint();
+  }
 
-        const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(trend);
-        const overall = { wells: overallBase.wells, currentRate };
+  function renderProgress(initial = false) {
+    if (!state.stops.length) return;
+    const pt  = interpolate(state.stops, state.fractions, state.progress);
+    const idx = stopIdxFromProgress(state.fractions, state.progress);
+    state.currentStopIdx = idx;
+    const stop = state.stops[idx];
+    const next = state.stops[Math.min(idx + 1, state.stops.length - 1)];
 
-        renderCSGPanel(overall, trend, null);
+    ui.currentStopName.textContent = stop?.name || "—";
+    ui.routeStatus.textContent = `${Math.round(state.progress * 100)}% · ${next && next !== stop ? next.name : "Destination reached"}`;
+
+    if (pt && state.view) {
+      state.view.center = [pt.longitude, pt.latitude];
+      if (state.highlightGraphic) {
+        state.highlightGraphic.geometry = new Point({ longitude: pt.longitude, latitude: pt.latitude, spatialReference: { wkid: 4326 } });
+      }
+    }
+    updateMedia(idx, initial);
+  }
+
+  // ── Media
+  function updateMedia(idx, initial) {
+    const stop = state.stops[idx];
+    if (!stop) return;
+    const items = stop.media?.length ? stop.media : [];
+
+    ui.stopEyebrow.textContent = `Stop ${idx + 1} of ${state.stops.length}`;
+    ui.mediaTitle.textContent  = stop.name;
+    ui.mediaText.textContent   = stop.text;
+    ui.stopTagChip.textContent = stop.tag || "Charter";
+    ui.mediaPeekLabel.textContent = stop.name;
+
+    clearTimers();
+
+    if (!items.length) {
+      ui.mediaCard.classList.remove("show");
+      ui.mediaPeekBtn.classList.remove("show");
+      ui.mediaTypeChip.textContent = "No media";
+      ui.mediaFrame.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:'Cormorant Garamond',serif;font-size:13px;font-style:italic;color:rgba(200,148,58,0.4);">Sea La Vie</div>`;
+      return;
+    }
+
+    let mi = 0;
+    const render = () => {
+      const item = items[mi];
+      ui.mediaTypeChip.textContent = item.type;
+      const badge = `<div class="media-badge">${item.type === "video" ? "▶ VIDEO" : "PHOTO"}</div>`;
+      if (item.type === "video") {
+        ui.mediaFrame.innerHTML = `${badge}<video src="${encodeURI(item.url)}" autoplay muted loop playsinline></video>`;
       } else {
-        const [catAgg, overall, trend] = await Promise.all([
-          fetchWUCategoryVolumes(geometry),
-          fetchWUOverallStats(geometry, null),
-          fetchWUTrend(geometry, null)
-        ]);
-
-        wuCategoryVolumes = catAgg.volumes;
-        wuVolumeTotal = catAgg.total;
-        
-        renderWUPanel(overall, trend, null);
+        ui.mediaFrame.innerHTML = `${badge}<img src="${encodeURI(item.url)}" alt="${esc(item.title || stop.name)}" loading="eager" onerror="this.style.opacity='0.2'"/>`;
       }
-      showPanel();
-    } catch(err){
-      console.error(err);
-      resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>';
-      showPanel();
-    } finally { 
-      loader.style.display = 'none'; 
+    };
+
+    render();
+    showMedia(!initial);
+    if (items.length > 1) {
+      state.cycleTimer = setInterval(() => { mi = (mi + 1) % items.length; render(); }, 4500);
     }
   }
 
-  // --- CSG stats (server-side) ---
-  function makeCSGWhere(selectedCategory){
-    if(!selectedCategory) return null;
-    const safe = String(selectedCategory).replace(/'/g, "''");
-    return `OGIA_PROD_ = '${safe}'`;
-  }
-
-  // Group by category label (OGIA_PROD_) and sum SUMVOLUME
-  async function fetchCSGCategoryVolumes(geometry){
-    const q = csgLayer.createQuery();
-    q.geometry = geometry;
-    q.returnGeometry = false;
-    q.groupByFieldsForStatistics = ["OGIA_PROD_"];
-    q.outStatistics = [
-      { statisticType: "sum", onStatisticField: "SUMVOLUME", outStatisticFieldName: "total_volume" }
-    ];
-    const { features } = await csgLayer.queryFeatures(q);
-    const volumes = {}; 
-    let total = 0;
-    (features || []).forEach(f=>{
-      const k = f.attributes.OGIA_PROD_ || 'Unknown';
-      const v = Number(f.attributes.total_volume || 0);
-      volumes[k] = (volumes[k] || 0) + v;
-      total += v;
-    });
-    return { volumes, total };
-  }
-
-  // Only returns wells count; current rate comes from trend
-  async function fetchCSGOverallStats(geometry, where){
-    const q = csgLayer.createQuery();
-    q.geometry = geometry; 
-    q.returnGeometry = false; 
-    if(where) q.where = where;
-
-    const outStats = [
-      { statisticType: "count", onStatisticField: "OBJECTID", outStatisticFieldName: "well_count" }
-    ];
-    q.outStatistics = outStats;
-
-    const { features } = await csgLayer.queryFeatures(q);
-    const a = features && features[0] ? features[0].attributes : {};
-    const wells = a.well_count || 0;
-
-    return { wells };
-  }
-
-  async function fetchCSGTrend(geometry, where){
-    const q = csgLayer.createQuery(); 
-    q.geometry = geometry; 
-    q.returnGeometry = false; 
-    if(where) q.where = where;
-
-    const years = [
-      1995,1996,1997,1998,1999,
-      2000,2001,2002,2003,2004,
-      2005,2006,2007,2008,2009,
-      2010,2011,2012,2013,2014,
-      2015,2016,2017,2018,2019,
-      2020,2021,2022,2023,2024
-    ];
-    q.outStatistics = years.map(y => ({
-      statisticType: "sum", 
-      onStatisticField: `VOL_${y}`, 
-      outStatisticFieldName: `VOL_${y}` 
-    }));
-
-    const { features } = await csgLayer.queryFeatures(q);
-    const a = features && features[0] ? features[0].attributes : {};
-    const labels = []; 
-    const values = [];
-    years.forEach(y=>{ 
-      const v = Number(a[`VOL_${y}`]||0); 
-      if(v>0){ 
-        labels.push(String(y)); 
-        values.push(v); 
-      } 
-    });
-    return { labels, values };
-  }
-
-  function renderCSGPanel(overall, trend, selectedCategory){
-    resultDiv.innerHTML = `
-      <div class="stats" id="statsCSG"></div>
-
-      <h3 class="panel-heading">Contributing formation/s</h3>
-      <div class="legend-list" id="listCSG"></div>
-
-      <div class="chart"><canvas id="trendChart"></canvas></div>
-      <div id="trendCheck" class="checksum"></div> 
-
-      <div style="font-size:12px; color:#475569; margin-top:8px;">
-        * Total volume of extracted water per year based on previous three years average
-      </div>
-
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 10px;">
-        <button id="resetCSG" class="esri-button" style="display:${selectedCategory? 'inline-flex':'none'}; background:#0ea5e9;">Reset</button>
-      </div>`;
-
-    // Stats: Wells + Total volume per year (3yr avg)
-    document.getElementById('statsCSG').innerHTML = `
-      <div class="stat-card">
-        <div class="stat-title">Wells</div>
-        <div class="stat-value">${(overall.wells||0).toLocaleString()}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-title">Total volume per year</div>
-        <div class="stat-value">${Number(overall.currentRate||0).toFixed(1)}<span class="stat-unit">ML/year</span></div>
-      </div>
-      <div></div>`;
-
-    // Build list from category volumes (cached)
-    const entries = Object.entries(csgCategoryVolumes).sort((a,b)=> b[1]-a[1]);
-    const list = document.getElementById('listCSG');
-    const pctBase = csgVolumeTotal || 1;
-    
-    list.innerHTML = entries.map(([category, totalVol], i)=>{
-      const pct = ((totalVol / pctBase) * 100).toFixed(1);
-      const color = `hsl(${i*35}, 65%, 65%)`;
-      const name = category || 'Unknown';
-      const safe = name.replace(/'/g, "&#39;");
-      return `
-        <div class="legend-item" data-key='${safe}'>
-          <div class="legend-left">
-            <span class="legend-swatch" style="background:${color}"></span>
-            <span>${name}</span>
-          </div>
-          <span class="legend-pct">${pct}%</span>
-        </div>`;
-    }).join('');
-
-    // Click handler filters by category
-    list.querySelectorAll('.legend-item').forEach(el=> el.onclick = async ()=>{
-      const key = el.getAttribute('data-key').replace(/&#39;/g, "'");
-      loader.style.display = 'block';
-      try {
-        const where = makeCSGWhere(key);
-        const [oBase, t] = await Promise.all([
-          fetchCSGOverallStats(lastGeom, where),
-          fetchCSGTrend(lastGeom, where)
-        ]);
-        const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(t);
-        const o = { wells: oBase.wells, currentRate };
-        renderCSGPanel(o, t, key);
-      } catch(e){ 
-        console.error(e); 
-        resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>'; 
-      }
-      finally { 
-        loader.style.display = 'none'; 
-      }
-    });
-
-    // Trend chart
-    if(trendChart) { 
-      trendChart.destroy(); 
-      trendChart = null; 
-    }
-    const canvas = document.getElementById('trendChart');
-    if (!canvas) return;
-    trendChart = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: (trend && trend.labels) ? trend.labels : [],
-        datasets: [{
-          label: 'Volume/Year (ML)',
-          data: (trend && trend.values) ? trend.values : [],
-          borderColor: '#0b3c5d',
-          backgroundColor: 'rgba(11,60,93,0.08)',
-          fill: true,
-          lineTension: 0,
-          pointRadius: 2,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        legend: { display: false },
-        scales: {
-          xAxes: [{
-            ticks: { autoSkip: true, maxRotation: 90, minRotation: 0 },
-            gridLines: { display: false }
-          }],
-          yAxes: [{
-            ticks: { beginAtZero: true },
-            gridLines: { color: 'rgba(0,0,0,0.05)' },
-            scaleLabel: { display: true, labelString: 'Volume (ML)' }
-          }]
-        },
-        tooltips: {
-          callbacks: {
-            label: function(item){ 
-              return (parseFloat(item.yLabel).toFixed(1) + ' ML'); 
-            }
-          }
-        }
-      }
-    });
-
-    // Trend total checksum
-    (function(){
-      var sum=(trend.values||[]).reduce(function(s,v){return s+Number(v||0);},0);
-      var el=document.getElementById('trendCheck');
-      if(el){ 
-        el.innerHTML = 'Trend total: '+sum.toFixed(1)+' ML'; 
-      }
-    })();
-
-    // Reset button
-    const resetBtn = document.getElementById('resetCSG');
-    if(resetBtn){ 
-      resetBtn.onclick = async ()=>{
-        loader.style.display = 'block';
-        try {
-          const [oBase,t] = await Promise.all([
-            fetchCSGOverallStats(lastGeom, null),
-            fetchCSGTrend(lastGeom, null)
-          ]);
-          const currentRate = computeThreeYearAvgFromTrendUsingFixedYears(t);
-          const o = { wells: oBase.wells, currentRate };
-          renderCSGPanel(o,t,null);
-        } finally { 
-          loader.style.display = 'none'; 
-        }
-      }; 
+  function showMedia(autoCollapse) {
+    ui.mediaPeekBtn.classList.remove("show");
+    ui.mediaCard.classList.add("show");
+    if (autoCollapse) {
+      state.collapseTimer = setTimeout(collapseMedia, 3000);
     }
   }
 
-  // --- Water Use (server-side aggregation) ---
-  function makeWUWhere(selectedFormation){
-    if(!selectedFormation) return null;
-    const safe = String(selectedFormation).replace(/'/g, "''");
-    return `FORMATION = '${safe}'`;
+  function collapseMedia() {
+    ui.mediaCard.classList.remove("show");
+    if (ui.mediaPeekLabel.textContent) ui.mediaPeekBtn.classList.add("show");
   }
 
-  // Group by FORMATION and sum ML_Bore
-  async function fetchWUCategoryVolumes(geometry){
-    const q = wuLayer.createQuery();
-    q.geometry = geometry;
-    q.returnGeometry = false;
-    q.groupByFieldsForStatistics = ["FORMATION"];
-    q.outStatistics = [
-      { statisticType: "sum", onStatisticField: "ML_Bore", outStatisticFieldName: "total_volume" }
-    ];
-    const { features } = await wuLayer.queryFeatures(q);
-    const volumes = {}; 
-    let total = 0;
-    (features || []).forEach(f=>{
-      const k = f.attributes.FORMATION || 'Unknown';
-      const v = Number(f.attributes.total_volume || 0);
-      volumes[k] = (volumes[k] || 0) + v;
-      total += v;
-    });
-    return { volumes, total };
-  }
-  
-  // Returns bore count and sum of 3-year avg rate
-  async function fetchWUOverallStats(geometry, where){
-    const q = wuLayer.createQuery();
-    q.geometry = geometry; 
-    q.returnGeometry = false; 
-    if(where) q.where = where;
-
-    const outStats = [
-      { statisticType: "count", onStatisticField: "OBJECTID", outStatisticFieldName: "bore_count" },
-      { statisticType: "sum", onStatisticField: "Rate__avg_prev_3yr_", outStatisticFieldName: "total_rate" }
-    ];
-    q.outStatistics = outStats;
-
-    const { features } = await wuLayer.queryFeatures(q);
-    const a = features && features[0] ? features[0].attributes : {};
-    const bores = a.bore_count || 0;
-    const currentRate = a.total_rate || 0;
-
-    return { bores, currentRate };
+  function clearTimers() {
+    if (state.cycleTimer) { clearInterval(state.cycleTimer); state.cycleTimer = null; }
+    if (state.collapseTimer) { clearTimeout(state.collapseTimer); state.collapseTimer = null; }
   }
 
-  async function fetchWUTrend(geometry, where){
-    const q = wuLayer.createQuery(); 
-    q.geometry = geometry; 
-    q.returnGeometry = false; 
-    if(where) q.where = where;
-
-    const years = [
-      1995,1996,1997,1998,1999,
-      2000,2001,2002,2003,2004,
-      2005,2006,2007,2008,2009,
-      2010,2011,2012,2013,2014,
-      2015,2016,2017,2018,2019,
-      2020,2021,2022,2023,2024
-    ];
-    // Filter out years that don't exist in this layer's fields
-    const validYears = years.filter(y => wuLayer.fields.some(f => f.name === `Vol_${y}`));
-
-    q.outStatistics = validYears.map(y => ({
-      statisticType: "sum", 
-      onStatisticField: `Vol_${y}`, 
-      outStatisticFieldName: `Vol_${y}` 
-    }));
-
-    const { features } = await wuLayer.queryFeatures(q);
-    const a = features && features[0] ? features[0].attributes : {};
-    const labels = []; 
-    const values = [];
-    validYears.forEach(y=>{ 
-      const v = Number(a[`Vol_${y}`]||0); 
-      if(v>0){ 
-        labels.push(String(y)); 
-        values.push(v); 
-      } 
-    });
-    return { labels, values };
-  }
-
-  function renderWUPanel(overall, trend, selectedFormation){
-    resultDiv.innerHTML = `
-      <div class="stats" id="statsWU"></div>
-
-      <h3 class="panel-heading">Contributing formation/s</h3>
-      <div class="legend-list" id="listWU"></div>
-
-      <div class="chart"><canvas id="trendChart"></canvas></div>
-      <div id="trendCheck" class="checksum"></div> 
-
-      <div style="font-size:12px; color:#475569; margin-top:8px;">
-        * Total volume of groundwater use per year based on previous three years average
-      </div>
-
-      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top: 10px;">
-        <button id="resetWU" class="esri-button" style="display:${selectedFormation? 'inline-flex':'none'}; background:#0ea5e9;">Reset</button>
-      </div>`;
-
-    // Stats: Bores + Total volume per year (3yr avg)
-    document.getElementById('statsWU').innerHTML = `
-      <div class="stat-card">
-        <div class="stat-title">Bores</div>
-        <div class="stat-value">${(overall.bores||0).toLocaleString()}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-title">Total volume per year</div>
-        <div class="stat-value">${Number(overall.currentRate||0).toFixed(1)}<span class="stat-unit">ML/year</span></div>
-      </div>
-      <div></div>`;
-
-    // Build list from category volumes (cached)
-    const entries = Object.entries(wuCategoryVolumes).sort((a,b)=> b[1]-a[1]);
-    const list = document.getElementById('listWU');
-    const pctBase = wuVolumeTotal || 1;
-    
-    list.innerHTML = entries.map(([category, totalVol], i)=>{
-      const pct = ((totalVol / pctBase) * 100).toFixed(1);
-      const color = `hsl(${i*50}, 70%, 60%)`;
-      const name = category || 'Unknown';
-      const safe = name.replace(/'/g, "&#39;");
-      return `
-        <div class="legend-item" data-key='${safe}'>
-          <div class="legend-left">
-            <span class="legend-swatch" style="background:${color}"></span>
-            <span>${name}</span>
-          </div>
-          <span class="legend-pct">${pct}%</span>
-        </div>`;
-    }).join('');
-
-    // Click handler filters by category
-    list.querySelectorAll('.legend-item').forEach(el=> el.onclick = async ()=>{
-      const key = el.getAttribute('data-key').replace(/&#39;/g, "'");
-      loader.style.display = 'block';
-      try {
-        const where = makeWUWhere(key);
-        const [o, t] = await Promise.all([
-          fetchWUOverallStats(lastGeom, where),
-          fetchWUTrend(lastGeom, where)
-        ]);
-        renderWUPanel(o, t, key);
-      } catch(e){ 
-        console.error(e); 
-        resultDiv.innerHTML = '<div class="info-message">Analysis Error</div>'; 
-      }
-      finally { 
-        loader.style.display = 'none'; 
-      }
-    });
-
-    // Trend chart
-    if(trendChart) { 
-      trendChart.destroy(); 
-      trendChart = null; 
-    }
-    const canvas = document.getElementById('trendChart');
-    if (!canvas) return;
-    trendChart = new Chart(canvas, {
-      type: 'line',
-      data: {
-        labels: (trend && trend.labels) ? trend.labels : [],
-        datasets: [{
-          label: 'Volume/Year (ML)',
-          data: (trend && trend.values) ? trend.values : [],
-          borderColor: '#1d4ed8',
-          backgroundColor: 'rgba(29,78,216,0.08)',
-          fill: true,
-          lineTension: 0,
-          pointRadius: 2,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        legend: { display: false },
-        scales: {
-          xAxes: [{
-            ticks: { autoSkip: true, maxRotation: 90, minRotation: 0 },
-            gridLines: { display: false }
-          }],
-          yAxes: [{
-            ticks: { beginAtZero: true },
-            gridLines: { color: 'rgba(0,0,0,0.05)' },
-            scaleLabel: { display: true, labelString: 'Volume (ML)' }
-          }]
-        },
-        tooltips: {
-          callbacks: {
-            label: function(item){ 
-              return (parseFloat(item.yLabel).toFixed(1) + ' ML'); 
-            }
-          }
-        }
-      }
-    });
-
-    // Trend total checksum
-    (function(){
-      var sum=(trend.values||[]).reduce(function(s,v){return s+Number(v||0);},0);
-      var el=document.getElementById('trendCheck');
-      if(el){ 
-        el.innerHTML = 'Trend total: '+sum.toFixed(1)+' ML'; 
-      }
-    })();
-
-    // Reset button
-    const resetBtn = document.getElementById('resetWU');
-    if(resetBtn){ 
-      resetBtn.onclick = async ()=>{
-        loader.style.display = 'block';
-        try {
-          const [o,t] = await Promise.all([
-            fetchWUOverallStats(lastGeom, null),
-            fetchWUTrend(lastGeom, null)
-          ]);
-          renderWUPanel(o,t,null);
-        } finally { 
-          loader.style.display = 'none'; 
-        }
-      }; 
+  function hideHint() {
+    if (!state.hintHidden) {
+      ui.hintStrip.classList.add("hidden");
+      state.hintHidden = true;
     }
   }
 
-});
+  // ── Ticks
+  function renderTicks() {
+    ui.stopTicks.innerHTML = "";
+    state.fractions.forEach((f, i) => {
+      const t = document.createElement("div");
+      t.className = "stop-tick";
+      t.style.left = `${f * 100}%`;
+      t.title = state.stops[i]?.name || `Stop ${i+1}`;
+      ui.stopTicks.appendChild(t);
+    });
+  }
+
+  // ── Touch / pointer
+  function onTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    state.touch = { active: true, id: t.identifier, startX: t.clientX, startProg: state.progress };
+  }
+  function onTouchMove(e) {
+    if (!state.touch.active) return;
+    const t = [...e.touches].find(x => x.identifier === state.touch.id);
+    if (!t) return;
+    e.preventDefault();
+    setProgress(state.touch.startProg + (t.clientX - state.touch.startX) / Math.max(window.innerWidth, 320) * 1.15);
+  }
+  function onTouchEnd(e) {
+    if (!state.touch.active) return;
+    if ([...e.touches].some(x => x.identifier === state.touch.id)) return;
+    state.touch.active = false;
+  }
+  function onPtrDown(e) {
+    if (e.pointerType !== "mouse") return;
+    if (e.target?.tagName === "INPUT" || e.target?.closest("video")) return;
+    state.touch = { active: true, id: "mouse", startX: e.clientX, startProg: state.progress };
+  }
+  function onPtrMove(e) {
+    if (!state.touch.active || state.touch.id !== "mouse") return;
+    if (e.buttons === 0) return onPtrEnd();
+    setProgress(state.touch.startProg + (e.clientX - state.touch.startX) / Math.max(window.innerWidth, 320) * 1.15);
+  }
+  function onPtrEnd() { if (state.touch.id === "mouse") { state.touch.active = false; state.touch.id = null; } }
+
+  // ── Helpers
+  function guessOrderFields(fields) {
+    const ns = fields.map(f => f.name);
+    return ["Order","Sequence","Seq","StopOrder","Sort"].map(n => ns.includes(n) ? `${n} ASC` : null).filter(Boolean).slice(0,1) || null;
+  }
+  function pickVal(attrs, keys) {
+    for (const k of keys) { const v = attrs[k]; if (v !== null && v !== undefined && String(v).trim()) return String(v).trim(); }
+    return null;
+  }
+  function sortSpatially(feats) {
+    const rem = feats.slice().sort((a,b) => (a.geometry.longitude??a.geometry.x) - (b.geometry.longitude??b.geometry.x));
+    const route = [rem.shift()];
+    while (rem.length) {
+      const last = route[route.length-1];
+      let bi = 0, bd = Infinity;
+      rem.forEach((c,i) => { const d = Math.hypot((c.geometry.longitude??c.geometry.x)-(last.geometry.longitude??last.geometry.x),(c.geometry.latitude??c.geometry.y)-(last.geometry.latitude??last.geometry.y)); if(d<bd){bd=d;bi=i;} });
+      route.push(rem.splice(bi,1)[0]);
+    }
+    return route;
+  }
+  function buildFractions(stops) {
+    if (!stops.length) return [];
+    if (stops.length === 1) return [0];
+    const cum = [0]; let total = 0;
+    for (let i=1;i<stops.length;i++) {
+      const dx = stops[i].longitude-stops[i-1].longitude, dy = stops[i].latitude-stops[i-1].latitude;
+      total += Math.hypot(dx,dy); cum.push(total);
+    }
+    return total ? cum.map(d=>d/total) : cum.map(()=>0);
+  }
+  function interpolate(stops, fracs, p) {
+    if (!stops.length) return null;
+    if (stops.length===1||p<=0) return {longitude:stops[0].longitude,latitude:stops[0].latitude};
+    if (p>=1) return {longitude:stops[stops.length-1].longitude,latitude:stops[stops.length-1].latitude};
+    for (let i=1;i<fracs.length;i++) {
+      if (p<=fracs[i]) {
+        const t = fracs[i]===fracs[i-1] ? 0 : (p-fracs[i-1])/(fracs[i]-fracs[i-1]);
+        return { longitude: lerp(stops[i-1].longitude,stops[i].longitude,t), latitude: lerp(stops[i-1].latitude,stops[i].latitude,t) };
+      }
+    }
+    return {longitude:stops[stops.length-1].longitude,latitude:stops[stops.length-1].latitude};
+  }
+  function stopIdxFromProgress(fracs, p) {
+    for (let i=fracs.length-1;i>=0;i--) if(p>=fracs[i]) return i;
+    return 0;
+  }
+  function lerp(a,b,t) { return a+(b-a)*t; }
+  function clamp(v,mn,mx) { return Math.max(mn,Math.min(mx,v)); }
+  function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+  function debounce(fn,ms) { let t; return (...a) => { clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+
+}); // end require
 </script>
 </body>
 </html>
