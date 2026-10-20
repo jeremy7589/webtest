@@ -2236,7 +2236,7 @@
         el("p", null, el("b", null, "No make good agreement in place: "), "an update on the actions taken to negotiate and enter into the agreement, progress toward meeting the obligations, and any engagement or negotiation activities during the period."),
         el("p", null, el("b", null, "Agreement executed: "), "the make good measures agreed for the bore, a progress update on their implementation, actions completed during the period and the status of ongoing activities."),
         el("p", null, el("b", null, "Must not be reported: "), "any monetary amount paid or proposed to be paid to the bore owner (compensation, settlement, reimbursement or any other financial consideration). The form blocks amounts in the comments."),
-        el("p", { class: "help" }, `Reports are lodged with OGIA (${CONFIG.MGA.submitEmail}). In production the submitted rows are read by OGIA directly; the Excel export reproduces OGIA's reporting template.`))));
+        el("p", { class: "help" }, this.mode() === "demo" ? `In production each submission goes to OGIA's reporting mailbox (${CONFIG.MGA.submitEmail}) and master register, and the sender receives an emailed receipt. The Excel export reproduces OGIA's reporting template.` : `Each submission goes to OGIA's reporting mailbox (${CONFIG.MGA.submitEmail}) and master register, and you receive an emailed receipt with a reference number. Keep that email as your proof of lodgement. The Excel export reproduces OGIA's reporting template for your own records.`))));
     },
     renderRows() {
       const list = this.listEl; if (!list) return; list.textContent = "";
