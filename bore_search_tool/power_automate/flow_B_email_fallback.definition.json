@@ -1,0 +1,150 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    }
+  },
+  "triggers": {
+    "When_a_new_email_arrives_in_a_shared_mailbox": {
+      "type": "OpenApiConnectionNotification",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_office365",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+          "operationId": "SharedMailboxOnNewEmailV2"
+        },
+        "parameters": {
+          "mailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au",
+          "folderPath": "Inbox",
+          "subjectFilter": "MGA annual report",
+          "includeAttachments": false
+        }
+      }
+    }
+  },
+  "actions": {
+    "Html_to_text": {
+      "runAfter": {},
+      "type": "OpenApiConnection",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_conversionservice",
+          "operationId": "HtmlToText",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_conversionservice"
+        },
+        "parameters": {
+          "request/html": "@triggerOutputs()?['body/body']"
+        }
+      }
+    },
+    "Has_block": {
+      "runAfter": {
+        "Html_to_text": [
+          "Succeeded"
+        ]
+      },
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@indexOf(body('Html_to_text'), '<<MGA-JSON>>')",
+              -1
+            ]
+          },
+          {
+            "greater": [
+              "@indexOf(body('Html_to_text'), '<</MGA-JSON>>')",
+              -1
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Block": {
+          "type": "Compose",
+          "inputs": "@substring(body('Html_to_text'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12), sub(indexOf(body('Html_to_text'), '<</MGA-JSON>>'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12)))"
+        },
+        "Parse_block": {
+          "runAfter": {
+            "Block": [
+              "Succeeded"
+            ]
+          },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@json(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''))",
+            "schema": {
+              "type": "object"
+            }
+          }
+        },
+        "Add_row_to_register": {
+          "runAfter": {
+            "Parse_block": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "host": {
+              "connectionName": "shared_excelonlinebusiness",
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+              "operationId": "AddRowV2"
+            },
+            "parameters": {
+              "source": "me",
+              "drive": "<library>",
+              "file": "<MGA_master_register.xlsx>",
+              "table": "MGAData",
+              "item": {
+                "Tenure Holder": "@{body('Parse_block')?['report']?['templateRow']?['Tenure Holder']}",
+                "RN": "@{body('Parse_block')?['report']?['templateRow']?['RN']}",
+                "Bore assessment status": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment status']}",
+                "Bore assessment date": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment date']}",
+                "Submitted to OGIA date": "@{body('Parse_block')?['report']?['templateRow']?['Submitted to OGIA date']}",
+                "Bore assessment outcome": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment outcome']}",
+                "MGA status": "@{body('Parse_block')?['report']?['templateRow']?['MGA status']}",
+                "Agreement Date": "@{body('Parse_block')?['report']?['templateRow']?['Agreement Date']}",
+                "Make good measure type": "@{body('Parse_block')?['report']?['templateRow']?['Make good measure type']}",
+                "Decommission status": "@{body('Parse_block')?['report']?['templateRow']?['Decommission status']}",
+                "Decommission date": "@{body('Parse_block')?['report']?['templateRow']?['Decommission date']}",
+                "Comments": "@{body('Parse_block')?['report']?['templateRow']?['Comments']}",
+                "Bore name": "@{body('Parse_block')?['report']?['templateRow']?['Bore name']}",
+                "Reporting period": "@{body('Parse_block')?['report']?['templateRow']?['Reporting period']}",
+                "Submission ID": "@{concat('EMAIL-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'))}",
+                "Submitted at": "@{convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')}",
+                "Submitted by": "@{triggerOutputs()?['body/from']}",
+                "Replaces submission": "@{body('Parse_block')?['report']?['replacesSubmissionId']}",
+                "Source": "Email"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Flag_for_manual_entry": {
+            "type": "OpenApiConnection",
+            "description": "No machine-readable block in the email: flag it so OGIA enters the attached Excel row by hand.",
+            "inputs": {
+              "host": {
+                "connectionName": "shared_office365",
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                "operationId": "Flag"
+              },
+              "parameters": {
+                "messageId": "@triggerOutputs()?['body/id']",
+                "mailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

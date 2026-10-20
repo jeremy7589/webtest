@@ -1,0 +1,321 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "defaultValue": {},
+      "type": "Object"
+    },
+    "$authentication": {
+      "defaultValue": {},
+      "type": "SecureObject"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "method": "POST"
+      },
+      "description": "Who can trigger the flow: Anyone. The Bore Search Tool posts JSON as text/plain, so leave the Request Body JSON Schema empty and parse with json(triggerBody())."
+    }
+  },
+  "actions": {
+    "Parse_report": {
+      "runAfter": {},
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@json(triggerBody())",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "holder": {
+              "type": "string"
+            },
+            "accessCode": {
+              "type": "string"
+            },
+            "period": {
+              "type": "string"
+            },
+            "submitter": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            },
+            "report": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
+            "app": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "Lookup_tenure_holder": {
+      "runAfter": {
+        "Parse_report": [
+          "Succeeded"
+        ]
+      },
+      "type": "OpenApiConnection",
+      "description": "Excel Online (Business): List rows present in a table. File = MGA_master_register.xlsx, Table = TenureHolders, Filter Query = Code eq '<holder>'",
+      "inputs": {
+        "host": {
+          "connectionName": "shared_excelonlinebusiness",
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+          "operationId": "GetItems"
+        },
+        "parameters": {
+          "source": "me",
+          "drive": "<pick the OneDrive or SharePoint library in the designer>",
+          "file": "<pick MGA_master_register.xlsx>",
+          "table": "TenureHolders",
+          "$filter": "@{concat('Code eq ''', toUpper(body('Parse_report')?['holder']), '''')}"
+        }
+      }
+    },
+    "Holder_row": {
+      "runAfter": {
+        "Lookup_tenure_holder": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@first(body('Lookup_tenure_holder')?['value'])"
+    },
+    "Check_access": {
+      "runAfter": {
+        "Holder_row": [
+          "Succeeded"
+        ]
+      },
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(body('Lookup_tenure_holder')?['value'])",
+              0
+            ]
+          },
+          {
+            "equals": [
+              "@toLower(string(outputs('Holder_row')?['Active']))",
+              "yes"
+            ]
+          },
+          {
+            "equals": [
+              "@outputs('Holder_row')?['AccessCode']",
+              "@body('Parse_report')?['accessCode']"
+            ]
+          },
+          {
+            "equals": [
+              "@endsWith(toLower(body('Parse_report')?['submitter']?['email']), toLower(outputs('Holder_row')?['EmailDomain']))",
+              true
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Is_verify": {
+          "type": "If",
+          "expression": {
+            "equals": [
+              "@body('Parse_report')?['action']",
+              "verify"
+            ]
+          },
+          "actions": {
+            "Respond_verified": {
+              "type": "Response",
+              "kind": "Http",
+              "inputs": {
+                "statusCode": 200,
+                "headers": {
+                  "Content-Type": "application/json",
+                  "Access-Control-Allow-Origin": "*"
+                },
+                "body": {
+                  "ok": true,
+                  "holder": "@outputs('Holder_row')?['Code']",
+                  "holderName": "@outputs('Holder_row')?['HolderName']",
+                  "period": "@body('Parse_report')?['period']"
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Submission_ID": {
+                "type": "Compose",
+                "inputs": "@concat('MGA-', formatDateTime(utcNow(), 'yyyyMMdd'), '-', toUpper(substring(replace(guid(), '-', ''), 0, 6)))"
+              },
+              "Received_at": {
+                "runAfter": {
+                  "Submission_ID": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Compose",
+                "inputs": "@convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')"
+              },
+              "Add_row_to_register": {
+                "runAfter": {
+                  "Received_at": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "description": "Excel Online (Business): Add a row into a table. Table = MGAData. Map each column from report.templateRow as shown.",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_excelonlinebusiness",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                    "operationId": "AddRowV2"
+                  },
+                  "parameters": {
+                    "source": "me",
+                    "drive": "<same library>",
+                    "file": "<MGA_master_register.xlsx>",
+                    "table": "MGAData",
+                    "item": {
+                      "Tenure Holder": "@{body('Parse_report')?['report']?['templateRow']?['Tenure Holder']}",
+                      "RN": "@{body('Parse_report')?['report']?['templateRow']?['RN']}",
+                      "Bore assessment status": "@{body('Parse_report')?['report']?['templateRow']?['Bore assessment status']}",
+                      "Bore assessment date": "@{body('Parse_report')?['report']?['templateRow']?['Bore assessment date']}",
+                      "Submitted to OGIA date": "@{body('Parse_report')?['report']?['templateRow']?['Submitted to OGIA date']}",
+                      "Bore assessment outcome": "@{body('Parse_report')?['report']?['templateRow']?['Bore assessment outcome']}",
+                      "MGA status": "@{body('Parse_report')?['report']?['templateRow']?['MGA status']}",
+                      "Agreement Date": "@{body('Parse_report')?['report']?['templateRow']?['Agreement Date']}",
+                      "Make good measure type": "@{body('Parse_report')?['report']?['templateRow']?['Make good measure type']}",
+                      "Decommission status": "@{body('Parse_report')?['report']?['templateRow']?['Decommission status']}",
+                      "Decommission date": "@{body('Parse_report')?['report']?['templateRow']?['Decommission date']}",
+                      "Comments": "@{body('Parse_report')?['report']?['templateRow']?['Comments']}",
+                      "Bore name": "@{body('Parse_report')?['report']?['templateRow']?['Bore name']}",
+                      "Reporting period": "@{body('Parse_report')?['report']?['templateRow']?['Reporting period']}",
+                      "Submission ID": "@{outputs('Submission_ID')}",
+                      "Submitted at": "@{outputs('Received_at')}",
+                      "Submitted by": "@{body('Parse_report')?['submitter']?['email']}",
+                      "Submitter name": "@{body('Parse_report')?['submitter']?['name']}",
+                      "Replaces submission": "@{body('Parse_report')?['report']?['replacesSubmissionId']}",
+                      "Source": "Bore Search Tool",
+                      "App version": "@{body('Parse_report')?['app']?['version']}"
+                    }
+                  }
+                }
+              },
+              "Email_receipt": {
+                "runAfter": {
+                  "Add_row_to_register": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "OpenApiConnection",
+                "description": "Office 365 Outlook: Send an email from a shared mailbox (V2). From OGIA.UWIR, To submitter, Cc OGIA.UWIR so OGIA keeps every submission in the mailbox.",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_office365",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "operationId": "SharedMailboxSendEmailV2"
+                  },
+                  "parameters": {
+                    "emailMessage/MailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au",
+                    "emailMessage/To": "@{body('Parse_report')?['submitter']?['email']}",
+                    "emailMessage/Cc": "OGIA.UWIR@dlgwv.qld.gov.au",
+                    "emailMessage/Subject": "@{concat('MGA annual report received: ', outputs('Submission_ID'), ' (', body('Parse_report')?['report']?['templateRow']?['Tenure Holder'], ', period ', body('Parse_report')?['report']?['templateRow']?['Reporting period'], ')')}",
+                    "emailMessage/Body": "<p>OGIA has received your annual make good agreement report lodged through the Bore Search Tool.</p><p><b>Receipt:</b> @{outputs('Submission_ID')}<br><b>Received:</b> @{outputs('Received_at')} (Brisbane time)<br><b>Tenure holder:</b> @{body('Parse_report')?['report']?['templateRow']?['Tenure Holder']}<br><b>Reporting period:</b> @{body('Parse_report')?['report']?['templateRow']?['Reporting period']}<br><b>Bore:</b> RN @{body('Parse_report')?['report']?['templateRow']?['RN']} @{body('Parse_report')?['report']?['templateRow']?['Bore name']}<br><b>Bore assessment:</b> @{body('Parse_report')?['report']?['templateRow']?['Bore assessment status']} / @{body('Parse_report')?['report']?['templateRow']?['Bore assessment outcome']}<br><b>MGA status:</b> @{body('Parse_report')?['report']?['templateRow']?['MGA status']}<br><b>Measures:</b> @{body('Parse_report')?['report']?['templateRow']?['Make good measure type']}<br><b>Replaces:</b> @{body('Parse_report')?['report']?['replacesSubmissionId']}</p><p><b>Comments:</b><br>@{body('Parse_report')?['report']?['templateRow']?['Comments']}</p><p>If anything above is wrong, open the report in the Bore Search Tool, choose Amend, and submit it again. This mailbox is monitored by OGIA.</p>",
+                    "emailMessage/Importance": "Normal"
+                  }
+                }
+              },
+              "Respond_submitted": {
+                "runAfter": {
+                  "Email_receipt": [
+                    "Succeeded"
+                  ]
+                },
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                  "statusCode": 200,
+                  "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*"
+                  },
+                  "body": {
+                    "ok": true,
+                    "submissionId": "@outputs('Submission_ID')",
+                    "receivedAt": "@outputs('Received_at')",
+                    "receiptTo": "@body('Parse_report')?['submitter']?['email']"
+                  }
+                }
+              },
+              "Respond_failed": {
+                "runAfter": {
+                  "Add_row_to_register": [
+                    "Failed",
+                    "TimedOut"
+                  ],
+                  "Email_receipt": [
+                    "Failed",
+                    "TimedOut"
+                  ]
+                },
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                  "statusCode": 500,
+                  "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*"
+                  },
+                  "body": {
+                    "ok": false,
+                    "error": "OGIA's register could not be updated. Please try again in a few minutes or send the report by email."
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "actions": {
+          "Respond_denied": {
+            "type": "Response",
+            "kind": "Http",
+            "inputs": {
+              "statusCode": 403,
+              "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+              },
+              "body": {
+                "ok": false,
+                "error": "@{if(greater(length(body('Lookup_tenure_holder')?['value']), 0), if(equals(outputs('Holder_row')?['AccessCode'], body('Parse_report')?['accessCode']), concat('Use a ', outputs('Holder_row')?['EmailDomain'], ' email address for ', outputs('Holder_row')?['HolderName'], '.'), 'Access code not recognised for this tenure holder.'), 'Access code not recognised for this tenure holder.')}"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}
