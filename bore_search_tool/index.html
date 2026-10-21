@@ -560,7 +560,7 @@
      The flow checks the company's access code, appends the row to OGIA's master workbook on OneDrive or SharePoint and emails a receipt. */
   CONFIG.MGA = {
     endpoint: "",                                        // Power Automate HTTP POST URL (keep the whole URL including the sig parameter); empty = demo mode
-    submitEmail: "OGIA.UWIR@dlgwv.qld.gov.au",           // OGIA's reporting mailbox (from the template's READ ME sheet); also the fallback for email submission
+    submitEmail: "Jeremy.Wolff@dlgwv.qld.gov.au",        // PILOT: receipts, copies and email lodgements go here. At go-live change to OGIA.UWIR@dlgwv.qld.gov.au (OGIA's reporting mailbox from the template's READ ME sheet)
     emailFallback: true,                                 // when the flow cannot be reached, offer to send the report by email instead
     tenureUrl: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/petroleum_replace_WFL1/FeatureServer/0",   // UWIR 2025 tenure with Responsible_tenure_Holder
     holders: ["ARROW", "ORIGIN", "SANTOS", "QGC"],      // companies that can report; codes match the tenure layer and the TenureHolders sheet of the master workbook

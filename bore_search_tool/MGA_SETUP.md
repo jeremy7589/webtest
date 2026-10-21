@@ -8,6 +8,8 @@ If the flow cannot be reached (outage, network block, out-of-date flow address) 
 
 Every version of a report carries a client reference (`ClientRef`). Both flows look it up before adding a row, so a retry after a timeout, or an email sent twice, never produces a second row.
 
+**Pilot first.** To show the whole chain working before OGIA is involved, follow `PILOT_SETUP.md`: it builds the same two flows in a personal Power Automate environment with the pilot owner's own OneDrive and mailbox (the `power_automate/pilot` folder holds the matching flow definitions and register). This guide is the production version for OGIA's shared mailbox and register.
+
 ## What is in this folder
 
 | File | Purpose |
@@ -32,7 +34,7 @@ Power Automate (make.powerautomate.com) > My flows > New flow > **Instant cloud 
 
 Action names matter: the expressions below refer to earlier actions by name with spaces written as underscores (`body('Parse_report')`). Rename each action exactly as shown before writing expressions that use it.
 
-1. **Trigger.** Open the trigger. Who can trigger the flow: **Anyone**. Method: **POST**. Leave the Request Body JSON Schema empty (the page sends JSON as `text/plain` to avoid browser preflight; the next step parses it). In the trigger's Settings turn on **Concurrency Control** with Degree of Parallelism **1**, so two companies submitting at the same moment never write the workbook together. Save once to obtain the URL (copy it later from the trigger: HTTP URL).
+1. **Trigger.** Open the trigger. Who can trigger the flow: **Anyone** (listed as a legacy setting below "Any user in my tenant"; the page has no Microsoft sign-in, so the other two modes cannot work). Method: **POST**. Leave the Request Body JSON Schema empty (the page sends JSON as `text/plain` to avoid browser preflight; the next step parses it). In the trigger's Settings turn on **Concurrency Control** with Degree of Parallelism **1**, so two companies submitting at the same moment never write the workbook together. Save once to obtain the URL (copy it later from the trigger: HTTP URL).
 2. **Parse JSON** (Data Operations). Rename to `Parse report`. Content: expression `json(string(triggerBody()))` (string() makes it work whether a test tool sent `application/json` or the page sent `text/plain`). Schema: click "Use sample payload to generate schema" and paste `sample_request.json`, or paste the schema from the definition file.
 3. **List rows present in a table** (Excel Online (Business)). Rename to `Lookup tenure holder`. Location: OneDrive for Business (or the SharePoint site). Document Library: OneDrive. File: `MGA_master_register.xlsx`. Table: `TenureHolders`. Show advanced options, Filter Query, expression:
    `concat('Code eq ''', toUpper(string(coalesce(body('Parse_report')?['holder'], ''))), '''')`

@@ -10,6 +10,7 @@
   "triggers": {
     "When_a_new_email_arrives_in_a_shared_mailbox": {
       "type": "OpenApiConnectionNotification",
+      "splitOn": "@triggerOutputs()?['body/value']",
       "inputs": {
         "host": {
           "connectionName": "shared_office365",
@@ -309,7 +310,7 @@
                   "host": {
                     "connectionName": "shared_office365",
                     "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-                    "operationId": "FlagV2"
+                    "operationId": "Flag_V2"
                   },
                   "parameters": {
                     "messageId": "@triggerOutputs()?['body/id']",
@@ -340,7 +341,7 @@
                     "Failed"
                   ]
                 },
-                "description": "Office 365 Outlook: Send an email (V2) to the OGIA mailbox. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
+                "description": "Office 365 Outlook: Send an email (V2) to OGIA.UWIR@dlgwv.qld.gov.au. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
               }
             }
           }
@@ -354,7 +355,7 @@
               "host": {
                 "connectionName": "shared_office365",
                 "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-                "operationId": "FlagV2"
+                "operationId": "Flag_V2"
               },
               "parameters": {
                 "messageId": "@triggerOutputs()?['body/id']",
@@ -385,7 +386,7 @@
                 "Failed"
               ]
             },
-            "description": "Office 365 Outlook: Send an email (V2) to the OGIA mailbox. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
+            "description": "Office 365 Outlook: Send an email (V2) to OGIA.UWIR@dlgwv.qld.gov.au. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
           }
         }
       }

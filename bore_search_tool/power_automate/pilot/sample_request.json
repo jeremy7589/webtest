@@ -1,0 +1,54 @@
+{
+  "action": "submit",
+  "holder": "ARROW",
+  "accessCode": "ARW-XXXX-XXXX",
+  "period": "2025-26",
+  "submitter": {
+    "email": "jeremy.wolff@dlgwv.qld.gov.au",
+    "name": "Jeremy Wolff"
+  },
+  "report": {
+    "id": "r8k2...",
+    "holder": "ARROW",
+    "period": "2025-26",
+    "rn": "6777",
+    "boreName": "",
+    "assessStatus": "Bore assessment complete",
+    "assessDate": "2026-03-10",
+    "submittedDate": "2026-03-20",
+    "outcome": "Impaired",
+    "mgaStatus": "In negotiations",
+    "agreementDate": "",
+    "measures": [],
+    "measureDetail": "",
+    "decomStatus": "",
+    "decomDate": "",
+    "comments": "Landholder met on site in March and July 2026; draft agreement issued in August and under review.",
+    "status": "draft",
+    "replacesSubmissionId": null,
+    "templateRow": {
+      "Tenure Holder": "Arrow Energy",
+      "RN": 6777,
+      "Bore assessment status": "Bore assessment complete",
+      "Bore assessment date": "10-03-2026",
+      "Submitted to OGIA date": "20-03-2026",
+      "Bore assessment outcome": "Impaired",
+      "MGA status": "In negotiations",
+      "Agreement Date": "",
+      "Make good measure type": "",
+      "Decommission status": "",
+      "Decommission date": "",
+      "Comments": "Landholder met on site in March and July 2026; draft agreement issued in August and under review.",
+      "Bore name": "",
+      "Reporting period": "2025-26",
+      "Report status": "draft",
+      "Submission ID": ""
+    },
+    "clientRef": "CMH3K2L8A9X2F"
+  },
+  "app": {
+    "version": "3.1.0",
+    "url": "https://jeremy7589.github.io/webtest/bore_search_tool/",
+    "sentAt": "2026-10-20T12:00:00.000Z"
+  }
+}
