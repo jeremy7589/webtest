@@ -19,10 +19,19 @@
         "parameters": {
           "mailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au",
           "folderPath": "Inbox",
-          "subjectFilter": "MGA annual report",
+          "subjectFilter": "MGA lodgement by email",
           "includeAttachments": false
         }
-      }
+      },
+      "conditions": [
+        {
+          "expression": "@not(startsWith(toLower(string(coalesce(triggerOutputs()?['body/subject'], ''))), 'mga annual report received'))"
+        },
+        {
+          "expression": "@not(equals(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), 'ogia.uwir@dlgwv.qld.gov.au'))"
+        }
+      ],
+      "description": "Subject Filter matches the subject the page writes ('MGA lodgement by email ...'). The two trigger conditions (Settings, Trigger conditions) keep flow A's own receipts and anything sent by the OGIA mailbox itself from starting a run."
     }
   },
   "actions": {
@@ -38,7 +47,8 @@
         "parameters": {
           "request/html": "@triggerOutputs()?['body/body']"
         }
-      }
+      },
+      "description": "Content Conversion: Html to text. Turns &lt;&lt;MGA-JSON&gt;&gt; back into <<MGA-JSON>> whatever the mail program did to the body."
     },
     "Has_block": {
       "runAfter": {
@@ -66,60 +76,271 @@
       "actions": {
         "Block": {
           "type": "Compose",
-          "inputs": "@substring(body('Html_to_text'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12), sub(indexOf(body('Html_to_text'), '<</MGA-JSON>>'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12)))"
+          "inputs": "@substring(body('Html_to_text'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12), sub(indexOf(body('Html_to_text'), '<</MGA-JSON>>'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12)))",
+          "description": "The base64 text between the markers."
         },
-        "Parse_block": {
+        "Decoded": {
           "runAfter": {
             "Block": [
               "Succeeded"
             ]
           },
-          "type": "ParseJson",
-          "inputs": {
-            "content": "@json(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''))",
-            "schema": {
-              "type": "object"
-            }
-          }
+          "type": "Compose",
+          "inputs": "@base64ToString(replace(replace(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''), decodeUriComponent('%09'), ''), ' ', ''))",
+          "description": "Line breaks, tabs and spaces inserted by mail programs are removed before decoding; base64 has none of its own, so nothing the submitter typed is altered."
         },
-        "Add_row_to_register": {
+        "Parse_block": {
           "runAfter": {
-            "Parse_block": [
+            "Decoded": [
               "Succeeded"
             ]
           },
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@json(outputs('Decoded'))",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "h": {
+                  "type": "string"
+                },
+                "p": {
+                  "type": "string"
+                },
+                "e": {
+                  "type": "string"
+                },
+                "n": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "rep": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "app": {
+                  "type": "string"
+                },
+                "r": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "description": "Keys: h holder code, p period, e submitter email, n name, ref client reference, rep replaced submission, app version, r the row (rn, bas, bad, sod, bao, mgs, agd, mgt, dcs, dcd, cmt, bn)."
+        },
+        "Lookup_tenure_holder": {
           "type": "OpenApiConnection",
           "inputs": {
             "host": {
               "connectionName": "shared_excelonlinebusiness",
               "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
-              "operationId": "AddRowV2"
+              "operationId": "GetItems"
             },
             "parameters": {
               "source": "me",
-              "drive": "<library>",
-              "file": "<MGA_master_register.xlsx>",
-              "table": "MGAData",
-              "item": {
-                "Tenure Holder": "@{body('Parse_block')?['report']?['templateRow']?['Tenure Holder']}",
-                "RN": "@{body('Parse_block')?['report']?['templateRow']?['RN']}",
-                "Bore assessment status": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment status']}",
-                "Bore assessment date": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment date']}",
-                "Submitted to OGIA date": "@{body('Parse_block')?['report']?['templateRow']?['Submitted to OGIA date']}",
-                "Bore assessment outcome": "@{body('Parse_block')?['report']?['templateRow']?['Bore assessment outcome']}",
-                "MGA status": "@{body('Parse_block')?['report']?['templateRow']?['MGA status']}",
-                "Agreement Date": "@{body('Parse_block')?['report']?['templateRow']?['Agreement Date']}",
-                "Make good measure type": "@{body('Parse_block')?['report']?['templateRow']?['Make good measure type']}",
-                "Decommission status": "@{body('Parse_block')?['report']?['templateRow']?['Decommission status']}",
-                "Decommission date": "@{body('Parse_block')?['report']?['templateRow']?['Decommission date']}",
-                "Comments": "@{body('Parse_block')?['report']?['templateRow']?['Comments']}",
-                "Bore name": "@{body('Parse_block')?['report']?['templateRow']?['Bore name']}",
-                "Reporting period": "@{body('Parse_block')?['report']?['templateRow']?['Reporting period']}",
-                "Submission ID": "@{concat('EMAIL-', formatDateTime(utcNow(), 'yyyyMMdd-HHmm'))}",
-                "Submitted at": "@{convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')}",
-                "Submitted by": "@{triggerOutputs()?['body/from']}",
-                "Replaces submission": "@{body('Parse_block')?['report']?['replacesSubmissionId']}",
-                "Source": "Email"
+              "drive": "<pick the OneDrive or SharePoint library in the designer>",
+              "file": "<pick MGA_master_register.xlsx>",
+              "table": "TenureHolders",
+              "$filter": "@{concat('Code eq ''', toUpper(string(coalesce(body('Parse_block')?['h'], ''))), '''')}"
+            }
+          },
+          "description": "Excel Online (Business): List rows present in a table. Table TenureHolders, Filter Query Code eq '<holder code>'. coalesce() keeps a missing holder from throwing.",
+          "runAfter": {
+            "Parse_block": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Holder_row": {
+          "runAfter": {
+            "Lookup_tenure_holder": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@if(greater(length(body('Lookup_tenure_holder')?['value']), 0), first(body('Lookup_tenure_holder')?['value']), json('{}'))",
+          "description": "The matching TenureHolders row, or an empty object when the code is unknown (so the checks below compare against blanks instead of failing on null)."
+        },
+        "Check_sender": {
+          "runAfter": {
+            "Holder_row": [
+              "Succeeded"
+            ]
+          },
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "greater": [
+                  "@length(body('Lookup_tenure_holder')?['value'])",
+                  0
+                ]
+              },
+              {
+                "equals": [
+                  "@toLower(string(coalesce(outputs('Holder_row')?['Active'], '')))",
+                  "yes"
+                ]
+              },
+              {
+                "greater": [
+                  "@length(string(coalesce(outputs('Holder_row')?['EmailDomain'], '')))",
+                  1
+                ]
+              },
+              {
+                "equals": [
+                  "@endsWith(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), toLower(string(coalesce(outputs('Holder_row')?['EmailDomain'], '#none'))))",
+                  true
+                ]
+              }
+            ]
+          },
+          "actions": {
+            "Client_ref": {
+              "type": "Compose",
+              "inputs": "@toUpper(replace(string(coalesce(body('Parse_block')?['ref'], '')), ' ', ''))"
+            },
+            "Find_existing": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "host": {
+                  "connectionName": "shared_excelonlinebusiness",
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                  "operationId": "GetItems"
+                },
+                "parameters": {
+                  "source": "me",
+                  "drive": "<pick the OneDrive or SharePoint library in the designer>",
+                  "file": "<pick MGA_master_register.xlsx>",
+                  "table": "MGAData",
+                  "$filter": "@{if(empty(outputs('Client_ref')), 'ClientRef eq ''NONE-NEVER-MATCHES''', concat('ClientRef eq ''', outputs('Client_ref'), ''''))}",
+                  "$top": 1
+                }
+              },
+              "runAfter": {
+                "Client_ref": [
+                  "Succeeded"
+                ]
+              },
+              "description": "Same report already filed (by flow A before a timeout, or an email sent twice)? Then do nothing."
+            },
+            "Already_filed": {
+              "runAfter": {
+                "Find_existing": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "greater": [
+                      "@length(body('Find_existing')?['value'])",
+                      0
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Note_duplicate": {
+                  "type": "Compose",
+                  "inputs": "@concat('Already in the register as ', first(body('Find_existing')?['value'])?['Submission ID'], '; nothing added.')"
+                }
+              },
+              "else": {
+                "actions": {
+                  "Add_row_to_register": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connectionName": "shared_excelonlinebusiness",
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                        "operationId": "AddRowV2"
+                      },
+                      "parameters": {
+                        "source": "me",
+                        "drive": "<pick the OneDrive or SharePoint library in the designer>",
+                        "file": "<pick MGA_master_register.xlsx>",
+                        "table": "MGAData",
+                        "item/Tenure Holder": "@{outputs('Holder_row')?['HolderName']}",
+                        "item/RN": "@body('Parse_block')?['r']?['rn']",
+                        "item/Bore assessment status": "@{body('Parse_block')?['r']?['bas']}",
+                        "item/Bore assessment date": "@{body('Parse_block')?['r']?['bad']}",
+                        "item/Submitted to OGIA date": "@{body('Parse_block')?['r']?['sod']}",
+                        "item/Bore assessment outcome": "@{body('Parse_block')?['r']?['bao']}",
+                        "item/MGA status": "@{body('Parse_block')?['r']?['mgs']}",
+                        "item/Agreement Date": "@{body('Parse_block')?['r']?['agd']}",
+                        "item/Make good measure type": "@{body('Parse_block')?['r']?['mgt']}",
+                        "item/Decommission status": "@{body('Parse_block')?['r']?['dcs']}",
+                        "item/Decommission date": "@{body('Parse_block')?['r']?['dcd']}",
+                        "item/Comments": "@{body('Parse_block')?['r']?['cmt']}",
+                        "item/Bore name": "@{body('Parse_block')?['r']?['bn']}",
+                        "item/Reporting period": "@{body('Parse_block')?['p']}",
+                        "item/Submission ID": "@{concat('EMAIL-', outputs('Client_ref'))}",
+                        "item/Submitted at": "@{convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')}",
+                        "item/Submitted by": "@{triggerOutputs()?['body/from']}",
+                        "item/Submitter name": "@{body('Parse_block')?['n']}",
+                        "item/Replaces submission": "@{body('Parse_block')?['rep']}",
+                        "item/Source": "Email",
+                        "item/App version": "@{body('Parse_block')?['app']}",
+                        "item/ClientRef": "@{outputs('Client_ref')}"
+                      }
+                    },
+                    "description": "Excel Online (Business): Add a row into a table. Table MGAData. Tenure Holder from the verified TenureHolders row; Submission ID is EMAIL- plus the client reference, which is what the page showed the officer."
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "actions": {
+              "Flag_unverified": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_office365",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "operationId": "FlagV2"
+                  },
+                  "parameters": {
+                    "messageId": "@triggerOutputs()?['body/id']",
+                    "body/flag/flagStatus": "flagged",
+                    "mailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au"
+                  }
+                },
+                "description": "Office 365 Outlook: Flag email (V2). Message Id from the trigger, Flag Status flagged, Original Mailbox Address OGIA.UWIR."
+              },
+              "Notify_unverified": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "host": {
+                    "connectionName": "shared_office365",
+                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                    "operationId": "SendEmailV2"
+                  },
+                  "parameters": {
+                    "emailMessage/To": "OGIA.UWIR@dlgwv.qld.gov.au",
+                    "emailMessage/Subject": "ACTION needed: emailed make good report from an unverified sender",
+                    "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} carries a make good report block for holder code \"@{body('Parse_block')?['h']}\", but the sender's domain does not match that company's EmailDomain in the Tenure holders sheet (or the company is inactive or unknown). Nothing was filed. Check with the company before entering the attached file by hand.</p>",
+                    "emailMessage/Importance": "High"
+                  }
+                },
+                "runAfter": {
+                  "Flag_unverified": [
+                    "Succeeded",
+                    "Failed"
+                  ]
+                },
+                "description": "Office 365 Outlook: Send an email (V2) to the OGIA mailbox. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
               }
             }
           }
@@ -129,18 +350,42 @@
         "actions": {
           "Flag_for_manual_entry": {
             "type": "OpenApiConnection",
-            "description": "No machine-readable block in the email: flag it so OGIA enters the attached Excel row by hand.",
             "inputs": {
               "host": {
                 "connectionName": "shared_office365",
                 "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
-                "operationId": "Flag"
+                "operationId": "FlagV2"
               },
               "parameters": {
                 "messageId": "@triggerOutputs()?['body/id']",
+                "body/flag/flagStatus": "flagged",
                 "mailboxAddress": "OGIA.UWIR@dlgwv.qld.gov.au"
               }
-            }
+            },
+            "description": "Office 365 Outlook: Flag email (V2). Message Id from the trigger, Flag Status flagged, Original Mailbox Address OGIA.UWIR."
+          },
+          "Notify_manual_entry": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "host": {
+                "connectionName": "shared_office365",
+                "apiId": "/providers/Microsoft.PowerApps/apis/shared_office365",
+                "operationId": "SendEmailV2"
+              },
+              "parameters": {
+                "emailMessage/To": "OGIA.UWIR@dlgwv.qld.gov.au",
+                "emailMessage/Subject": "ACTION needed: emailed make good report needs manual entry",
+                "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} has no machine-readable block (long comments, or the text was pasted by hand). Open the attached Excel file and paste its row into the MGA data table of the master register (Source = Email). The email has been flagged in the OGIA.UWIR mailbox.</p>",
+                "emailMessage/Importance": "High"
+              }
+            },
+            "runAfter": {
+              "Flag_for_manual_entry": [
+                "Succeeded",
+                "Failed"
+              ]
+            },
+            "description": "Office 365 Outlook: Send an email (V2) to the OGIA mailbox. The subject deliberately does not contain 'MGA lodgement by email', so it never re-triggers this flow."
           }
         }
       }

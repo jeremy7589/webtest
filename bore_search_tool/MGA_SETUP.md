@@ -2,78 +2,143 @@
 
 The Bore Search Tool includes a reporting module for the annual make good agreement report that responsible tenure holders must lodge with OGIA by 31 October each year (Water Act 2000, section 437B; reporting period 1 October to 30 September). The form reproduces `MGA_reporting_template_v0.2.xlsx` field for field.
 
-**How it works in production.** A company officer opens the tool, chooses their company, enters the access code OGIA issued to that company and their work email, and fills in one report per bore. On submit the page sends the report to a Power Automate flow owned by OGIA. The flow checks the access code and email domain, appends the row to OGIA's master register (an Excel workbook on OneDrive or SharePoint), emails a receipt from OGIA.UWIR@dlgwv.qld.gov.au to the officer with a copy to the OGIA mailbox, and returns a receipt number that the page shows. Nothing needs ArcGIS Online, company accounts or IT changes on the company side. Each company only ever sees its own reports because the page stores them per company in the officer's browser; the register itself is only visible to OGIA.
+**How it works in production.** A company officer opens the tool, chooses their company, enters the access code OGIA issued to that company and their work email, and fills in one report per bore. On submit the page sends the report to a Power Automate flow owned by OGIA (flow A). The flow checks the access code and email domain, appends the row to OGIA's master register (an Excel workbook on OneDrive or SharePoint), answers the page with a receipt number, and then emails a receipt from OGIA.UWIR@dlgwv.qld.gov.au to the officer with a copy to the OGIA mailbox. Nothing needs ArcGIS Online, company accounts or IT changes on the company side. Each company only ever sees its own reports because the page stores them per company in the officer's browser; the register itself is only visible to OGIA.
 
-If the flow cannot be reached (outage, network block) the page offers to send the same report by email instead: it downloads the row as an Excel file and opens a pre-addressed email to OGIA.UWIR. A second, optional flow can file those emails into the register automatically.
+If the flow cannot be reached (outage, network block, out-of-date flow address) the page offers to send the same report by email instead: it downloads the row as an Excel file and opens a pre-addressed email to OGIA.UWIR carrying a coded copy of the row. A second, optional flow (flow B) files those emails into the register automatically after checking the sender's domain; emails it cannot read are flagged for manual entry.
+
+Every version of a report carries a client reference (`ClientRef`). Both flows look it up before adding a row, so a retry after a timeout, or an email sent twice, never produces a second row.
 
 ## What is in this folder
 
 | File | Purpose |
 |---|---|
 | `index.html` | The tool. Demo mode until `CONFIG.MGA.endpoint` is set (search for `CONFIG.MGA` near the top of the script). |
-| `power_automate/MGA_master_register.xlsx` | The master register. Upload it to OneDrive or SharePoint, unchanged. Sheets: READ ME, MGA data (table `MGAData`), Tenure holders (table `TenureHolders`, access codes), Field description. |
-| `power_automate/flow_A_http_submission.definition.json` | The submission flow, action by action, in Power Automate's own definition format. Use it as the reference while building the flow (section 3) or compare with Peek code afterwards. |
+| `power_automate/MGA_master_register.xlsx` | The master register. Upload it to OneDrive or SharePoint, unchanged. Sheets: READ ME, MGA data (table `MGAData`, 22 columns), Tenure holders (table `TenureHolders`, access codes), Field description. |
+| `power_automate/flow_A_http_submission.definition.json` | The submission flow, action by action, in Power Automate's own definition format. Use it as the reference while building the flow (section 2) or compare with Peek code afterwards. Every action carries a description saying which designer action it is. |
 | `power_automate/flow_B_email_fallback.definition.json` | Optional flow that files emailed reports into the register (section 6). |
-| `power_automate/sample_request.json`, `sample_response.json` | What the page sends and expects back. Use the request as the test body. |
+| `power_automate/sample_request.json`, `sample_response.json`, `sample_response_duplicate.json` | What the page sends and expects back. Use the request as the test body. |
+| `power_automate/sample_email.txt` | An email exactly as the page prepares it (subject, text and coded block), for testing flow B. |
 
 ## 1. Before you start (10 minutes)
 
-1. **Licence.** The trigger "When an HTTP request is received" is a premium connector. Only the flow owner needs a Power Automate Premium (per user) licence; the company officers who submit need nothing. Excel Online (Business) and Office 365 Outlook are standard connectors. If OGIA cannot get a premium licence, use flow B only (email path, standard connectors) and leave `endpoint` empty: the page then submits by email every time.
-2. **Owner account.** Build the flow under a shared or service account that OGIA controls (not a person who may leave), with Send As permission on the OGIA.UWIR@dlgwv.qld.gov.au shared mailbox (Microsoft 365 admin centre, Teams and groups, Shared mailboxes, Send as). "Send on behalf" is not enough.
-3. **DLP check.** In the Power Platform admin centre (Policies, Data policies) confirm the environment's policy puts HTTP Request, Excel Online (Business) and Office 365 Outlook in the same group (usually Business). A policy that blocks the HTTP trigger shows as the flow being suspended after save.
-4. **Upload the register.** Put `MGA_master_register.xlsx` in a OneDrive for Business folder of the owner account (or a SharePoint library). Do not rename sheets, tables or column headers. Open the Tenure holders sheet: replace the EmailDomain values with each company's real email domain if different, and keep the AccessCode values private (current codes: ARROW ARW-QVIK-J9VB, ORIGIN ORG-YUB2-5R2X, SANTOS SAN-FXLD-N0G3, QGC QGC-86MB-7V8U). Codes can be changed at any time; the flow reads the sheet on every submission.
+1. **Licence.** The trigger "When an HTTP request is received" is a premium connector. Only the flow owner needs a Power Automate Premium (per user) licence; the company officers who submit need nothing. Excel Online (Business), Office 365 Outlook and Content Conversion are standard connectors. If OGIA cannot get a premium licence, build flow B only and leave `endpoint` empty: the page then lodges by email every time.
+2. **Owner account.** Build the flows under a shared or service account that OGIA controls (not a person who may leave), with **Send As** permission on the OGIA.UWIR@dlgwv.qld.gov.au shared mailbox (Microsoft 365 admin centre, Teams and groups, Shared mailboxes, Send as). "Send on behalf" is not enough. The mailbox must be a true shared mailbox, not a personal mailbox converted to shared (the shared-mailbox send action does not work with those).
+3. **DLP check.** In the Power Platform admin centre (Policies, Data policies) confirm the environment's policy puts HTTP Request, Excel Online (Business), Office 365 Outlook and Content Conversion in the same group (usually Business). A policy that blocks the HTTP trigger shows as the flow being suspended after save.
+4. **Upload the register.** Put `MGA_master_register.xlsx` in a OneDrive for Business folder of the owner account (or a SharePoint library). Do not rename sheets, tables or column headers. Open the Tenure holders sheet: replace the EmailDomain values with each company's real email domain if different (never leave one blank: the flow refuses a company with a blank domain), and keep the AccessCode values private (current codes: ARROW ARW-QVIK-J9VB, ORIGIN ORG-YUB2-5R2X, SANTOS SAN-FXLD-N0G3, QGC QGC-86MB-7V8U). Codes can be changed at any time; the flow reads the sheet on every submission.
 
-## 2. Create flow A (about 25 minutes, click by click)
+## 2. Create flow A (about 35 minutes, click by click)
 
 Power Automate (make.powerautomate.com) > My flows > New flow > **Instant cloud flow** > name `OGIA MGA submission` > trigger **When an HTTP request is received** > Create.
 
-1. **Trigger.** Open the trigger. Who can trigger the flow: **Anyone**. Method: **POST**. Leave the Request Body JSON Schema empty (the page sends JSON as `text/plain` to avoid browser preflight; the next step parses it). Save once to obtain the URL (copy it later from the trigger: HTTP URL).
-2. **Parse JSON** (Data Operations). Rename to `Parse report`. Content: expression `json(triggerBody())`. Schema: click "Use sample payload to generate schema" and paste `sample_request.json`, or paste the schema from the definition file.
-3. **List rows present in a table** (Excel Online (Business)). Rename to `Lookup tenure holder`. Location: OneDrive for Business (or the SharePoint site). Document Library: OneDrive. File: `MGA_master_register.xlsx`. Table: `TenureHolders`. Show advanced options, Filter Query, expression: `concat('Code eq ''', toUpper(body('Parse_report')?['holder']), '''')`.
-4. **Compose**. Rename to `Holder row`. Inputs, expression: `first(body('Lookup_tenure_holder')?['value'])`.
-5. **Condition**. Rename to `Check access`. Add four rows joined with AND:
-   - expression `length(body('Lookup_tenure_holder')?['value'])` is greater than `0`
-   - expression `toLower(string(outputs('Holder_row')?['Active']))` is equal to `yes`
-   - expression `outputs('Holder_row')?['AccessCode']` is equal to expression `body('Parse_report')?['accessCode']`
-   - expression `endsWith(toLower(body('Parse_report')?['submitter']?['email']), toLower(outputs('Holder_row')?['EmailDomain']))` is equal to expression `true`
-6. **If no** branch: **Response** (Request). Status code `403`. Headers: `Content-Type` `application/json` and `Access-Control-Allow-Origin` `*`. Body:
+Action names matter: the expressions below refer to earlier actions by name with spaces written as underscores (`body('Parse_report')`). Rename each action exactly as shown before writing expressions that use it.
+
+1. **Trigger.** Open the trigger. Who can trigger the flow: **Anyone**. Method: **POST**. Leave the Request Body JSON Schema empty (the page sends JSON as `text/plain` to avoid browser preflight; the next step parses it). In the trigger's Settings turn on **Concurrency Control** with Degree of Parallelism **1**, so two companies submitting at the same moment never write the workbook together. Save once to obtain the URL (copy it later from the trigger: HTTP URL).
+2. **Parse JSON** (Data Operations). Rename to `Parse report`. Content: expression `json(string(triggerBody()))` (string() makes it work whether a test tool sent `application/json` or the page sent `text/plain`). Schema: click "Use sample payload to generate schema" and paste `sample_request.json`, or paste the schema from the definition file.
+3. **List rows present in a table** (Excel Online (Business)). Rename to `Lookup tenure holder`. Location: OneDrive for Business (or the SharePoint site). Document Library: OneDrive. File: `MGA_master_register.xlsx`. Table: `TenureHolders`. Show advanced options, Filter Query, expression:
+   `concat('Code eq ''', toUpper(string(coalesce(body('Parse_report')?['holder'], ''))), '''')`
+4. **Compose**. Rename to `Holder row`. Inputs, expression:
+   `if(greater(length(body('Lookup_tenure_holder')?['value']), 0), first(body('Lookup_tenure_holder')?['value']), json('{}'))`
+   (an empty object when the code is unknown, so the checks below compare against blanks instead of failing on null).
+5. **Condition**. Rename to `Check access`. Add five rows joined with **AND** (each left side is an expression):
+   - `length(body('Lookup_tenure_holder')?['value'])` is greater than `0`
+   - `toLower(string(coalesce(outputs('Holder_row')?['Active'], '')))` is equal to `yes`
+   - `string(coalesce(outputs('Holder_row')?['AccessCode'], '#none'))` is equal to expression `string(coalesce(body('Parse_report')?['accessCode'], ''))`
+   - `length(string(coalesce(outputs('Holder_row')?['EmailDomain'], '')))` is greater than `1`
+   - `endsWith(toLower(string(coalesce(body('Parse_report')?['submitter']?['email'], ''))), toLower(string(coalesce(outputs('Holder_row')?['EmailDomain'], '#none'))))` is equal to expression `true`
+6. **If no** branch: **Response** (Request). Rename `Respond denied`. Status code `403`. Header `Content-Type` `application/json`. Body:
    `{ "ok": false, "error": "Access code not recognised for this tenure holder." }` (the definition file has a longer expression that distinguishes a wrong email domain; optional).
 7. **If yes** branch: **Condition**. Rename to `Is verify`: expression `body('Parse_report')?['action']` is equal to `verify`.
-   - If yes: **Response**, status `200`, same two headers, body `{ "ok": true, "holder": "@{outputs('Holder_row')?['Code']}", "holderName": "@{outputs('Holder_row')?['HolderName']}" }`.
-   - If no (a submission), add the following in order:
-     1. **Compose** `Submission ID`: `concat('MGA-', formatDateTime(utcNow(), 'yyyyMMdd'), '-', toUpper(substring(replace(guid(), '-', ''), 0, 6)))`
-     2. **Compose** `Received at`: `convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')`
-     3. **Add a row into a table** (Excel Online (Business)) `Add row to register`: same file, Table `MGAData`. The designer lists every column of the table. Fill each of the first 14 columns with the expression `body('Parse_report')?['report']?['templateRow']?['<column header>']` (for example `...['Tenure Holder']`, `...['RN']`, `...['Comments']`; the headers match the template exactly). Then: Submission ID = `outputs('Submission_ID')`, Submitted at = `outputs('Received_at')`, Submitted by = `body('Parse_report')?['submitter']?['email']`, Submitter name = `body('Parse_report')?['submitter']?['name']`, Replaces submission = `body('Parse_report')?['report']?['replacesSubmissionId']`, Source = `Bore Search Tool`, App version = `body('Parse_report')?['app']?['version']`.
-     4. **Send an email from a shared mailbox (V2)** (Office 365 Outlook) `Email receipt`: Original Mailbox Address `OGIA.UWIR@dlgwv.qld.gov.au`; To = `body('Parse_report')?['submitter']?['email']`; Cc `OGIA.UWIR@dlgwv.qld.gov.au`; Subject and Body as in the definition file (receipt number, received time, tenure holder, period, bore, statuses, measures, comments, how to amend).
-     5. **Response** `Respond submitted`: status `200`, the two headers, body `{ "ok": true, "submissionId": "@{outputs('Submission_ID')}", "receivedAt": "@{outputs('Received_at')}", "receiptTo": "@{body('Parse_report')?['submitter']?['email']}" }`.
-     6. **Response** `Respond failed`: status `500`, the two headers, body `{ "ok": false, "error": "OGIA's register could not be updated. Please try again in a few minutes or send the report by email." }`. Open its settings (three dots, Configure run after) and tick **has failed** and **has timed out** for both `Add row to register` and `Email receipt`, unticking "is successful".
+   - **If yes**: **Response** `Respond verified`, status `200`, header `Content-Type` `application/json`, body `{ "ok": true, "holder": "@{outputs('Holder_row')?['Code']}", "holderName": "@{outputs('Holder_row')?['HolderName']}" }`.
+   - **If no** (a submission), add the following in order:
+     1. **Compose** `Client ref`: `toUpper(replace(string(coalesce(body('Parse_report')?['report']?['clientRef'], '')), ' ', ''))`
+     2. **List rows present in a table** `Find existing`: same file, Table `MGAData`, Filter Query expression `if(empty(outputs('Client_ref')), 'ClientRef eq ''NONE-NEVER-MATCHES''', concat('ClientRef eq ''', outputs('Client_ref'), ''''))`, Top Count `1`.
+     3. **Condition** `Already lodged`: `length(body('Find_existing')?['value'])` is greater than `0`.
+        - **If yes**: **Response** `Respond already`, status `200`, header `Content-Type` `application/json`, body
+          `{ "ok": true, "duplicate": true, "submissionId": "@{first(body('Find_existing')?['value'])?['Submission ID']}", "receivedAt": "@{first(body('Find_existing')?['value'])?['Submitted at']}", "receiptTo": "@{body('Parse_report')?['submitter']?['email']}" }`
+          (this is what makes a retry after a timeout safe: the page shows the existing receipt and nothing is filed twice).
+        - **If no**, in order:
+          1. **Compose** `Submission ID`: `concat('MGA-', formatDateTime(convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time'), 'yyyyMMdd'), '-', toUpper(substring(replace(guid(), '-', ''), 0, 6)))`
+          2. **Compose** `Received at`: `convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')`
+          3. **Add a row into a table** (Excel Online (Business)) `Add row to register`: same file, Table `MGAData`. The designer lists every column of the table. Fill them as follows:
+             - Tenure Holder = `outputs('Holder_row')?['HolderName']` (from the verified register row, never from the page)
+             - RN = `body('Parse_report')?['report']?['templateRow']?['RN']`
+             - the next 12 template columns (Bore assessment status to Reporting period) = `body('Parse_report')?['report']?['templateRow']?['<column header>']`, the header spelt exactly as in the table (for example `...['Bore assessment status']`, `...['Comments']`)
+             - Submission ID = `outputs('Submission_ID')`, Submitted at = `outputs('Received_at')`, Submitted by = `body('Parse_report')?['submitter']?['email']`, Submitter name = `body('Parse_report')?['submitter']?['name']`, Replaces submission = `body('Parse_report')?['report']?['replacesSubmissionId']`, Source = `Bore Search Tool`, App version = `body('Parse_report')?['app']?['version']`, ClientRef = `outputs('Client_ref')`.
+             Open this action's Settings and set the **Retry Policy** to Fixed Interval, Count `2`, Interval `PT10S`, so a locked workbook makes the run fail inside the 45 seconds the page waits rather than hanging for minutes.
+          4. **Response** `Respond submitted`: status `200`, header `Content-Type` `application/json`, body
+             `{ "ok": true, "submissionId": "@{outputs('Submission_ID')}", "receivedAt": "@{outputs('Received_at')}", "receiptTo": "@{body('Parse_report')?['submitter']?['email']}" }`.
+             The page is answered **before** the receipt email is sent, so a mail problem can never turn a filed report into an error.
+          5. **Response** `Respond failed`: status `500`, header `Content-Type` `application/json`, body
+             `{ "ok": false, "error": "OGIA's register could not be updated and nothing was filed. Try again in a few minutes or send the report by email." }`.
+             Open its menu (three dots), **Configure run after**, and set it to run after `Add row to register` only, ticking **has failed** and **has timed out** and unticking **is successful**. Do not add a second predecessor: an action with two predecessors runs only when both finished in a ticked state, which is why the earlier draft of this flow could never return this response.
+          6. **Compose** `Receipt fields`. Configure run after `Respond submitted` with **is successful**, **has failed** and **has timed out** all ticked (the receipt must still go out when the browser gave up waiting before the response). Inputs, as a JSON object with four expressions, each wrapping the submitter's text so it cannot inject HTML into an OGIA email:
+             `{ "comments": "@{replace(replace(replace(string(coalesce(body('Parse_report')?['report']?['templateRow']?['Comments'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')}", "boreName": "...same for ['Bore name']...", "measures": "...same for ['Make good measure type']...", "name": "...same for body('Parse_report')?['submitter']?['name']..." }`
+          7. **Send an email from a shared mailbox (V2)** (Office 365 Outlook) `Email receipt`: Original Mailbox Address `OGIA.UWIR@dlgwv.qld.gov.au`; To = `body('Parse_report')?['submitter']?['email']`; Cc `OGIA.UWIR@dlgwv.qld.gov.au`; Subject = `concat('MGA annual report received: ', outputs('Submission_ID'), ' (', outputs('Holder_row')?['HolderName'], ', RN ', string(coalesce(body('Parse_report')?['report']?['templateRow']?['RN'], '')), ', period ', string(coalesce(body('Parse_report')?['report']?['templateRow']?['Reporting period'], '')), ')')`; Body: copy the HTML from the definition file (receipt number, received time, tenure holder, period, bore, all dates and statuses, measures, replaces, lodged by, then the escaped comments from `outputs('Receipt_fields')?['comments']`, and how to amend). The subject must keep starting with "MGA annual report received" because flow B ignores exactly that.
+          8. **Send an email (V2)** (Office 365 Outlook, from the owner's own mailbox) `Receipt failed notice`: To `OGIA.UWIR@dlgwv.qld.gov.au`, Subject `concat('MGA receipt email failed: ', outputs('Submission_ID'))`, Body as in the definition file, Importance High. Configure run after: `Email receipt` **has failed** or **has timed out** only. This is how OGIA learns that a filed report got no receipt (usually a Send As permission problem).
 8. **Save**. Copy the trigger's HTTP URL (it includes a `sig=` parameter; it is generated on save and changes if you regenerate the key or re-import the flow).
 
-## 3. Test the flow before touching the page (5 minutes)
+## 3. Test the flow before touching the page (10 minutes)
 
-Use the flow's own Test with a manual payload, or any HTTP client: POST the contents of `sample_request.json` to the URL with header `Content-Type: text/plain`, after replacing `accessCode` with the real Arrow code from the Tenure holders sheet. Expected: HTTP 200 with a body like `sample_response.json`, a new row in MGA data, and a receipt email in the OGIA.UWIR mailbox (and in the submitter address). Then post it again with a wrong code: expected HTTP 403 and no row. Check the run history (My flows, the flow, 28-day run history) for the exact action that failed if anything differs.
+1. With any HTTP client (or the flow's Test pane), POST the contents of `sample_request.json` to the URL with header `Content-Type: text/plain`, after replacing `accessCode` with the real Arrow code from the Tenure holders sheet and `clientRef` with any new letters. Expected: HTTP 200 with a body like `sample_response.json`, a new row in MGA data (Tenure Holder "Arrow Energy", ClientRef filled), and a receipt email in the OGIA.UWIR mailbox and in the submitter address.
+2. POST the same body again unchanged. Expected: HTTP 200 like `sample_response_duplicate.json` and **no** second row.
+3. POST with a wrong `accessCode`. Expected: HTTP 403 and no row. POST with `holder` set to `NOBODY`. Expected: HTTP 403 (not a failed run).
+4. Rename the MGAData table temporarily (or point the action at a wrong table) and POST once more. Expected: HTTP 500 with the "could not be updated" message, not a 502 from the gateway. Put the table name back.
+5. **Browser check (do not skip).** Host `index.html` over HTTPS with `endpoint` set (section 4), open it in Edge or Chrome, open the MGA module and sign in with a real code. If the sign-in fails and the browser console (F12) shows a CORS error mentioning `Access-Control-Allow-Origin`, the Power Automate gateway is not adding the CORS header to your Response actions in this environment: add header `Access-Control-Allow-Origin` with value `*` to each of the five Response actions and test again. If instead the console reports the header "contains multiple values", remove that header from the Response actions. Only one of the two can be right for a given environment, and it is fixed in five minutes.
+
+Check the run history (My flows, the flow, 28-day run history) for the exact action that failed if anything differs.
 
 ## 4. Switch the page to live mode
 
-In `index.html` find `CONFIG.MGA` and set `endpoint` to the flow URL (keep the whole URL, including `sig=`). Leave `submitEmail` as the OGIA mailbox and `emailFallback: true`. Host the page over HTTPS. The demo role picker disappears automatically; the sheet now asks for company, access code and email.
+In `index.html` find `CONFIG.MGA` and set `endpoint` to the flow URL (keep the whole URL, including `sig=`). Leave `submitEmail` as the OGIA mailbox, `emailFallback: true` and `timeoutMs: 45000`. Host the page over HTTPS. The demo role picker disappears automatically; the sheet now asks for company, access code and email.
 
-Give each company its access code and the page URL. Tell them: one officer per submission, reports are kept in the browser they used, the receipt email is their proof of lodgement, and amendments are made by opening the submitted report and choosing Amend.
+Give each company its access code and the page URL. Tell them: one officer per submission, reports are kept in the browser they used, the receipt email is their proof of lodgement, and amendments are made by opening the submitted report and choosing Amend. If the page ever says the submission address is out of date, the flow URL has changed (key regenerated, flow re-imported, or Microsoft's endpoint migration): update `endpoint` and re-publish the page; officers can lodge by email in the meantime.
 
-## 5. Each year
+## 5. Each year: OGIA runbook
 
-- 1 October: the page automatically offers the period that just ended (for example 2025-26, due 31 October 2026). Reports for a period that has not ended are kept as drafts.
-- October: OGIA watches the MGA data sheet. Filter by Reporting period; where a bore has several Submission IDs keep the latest (Replaces submission names the earlier one). Rows arriving after 31 October show in the officers' list with a Late badge.
-- After the deadline: copy the register to the records system as the workbook of record. Rotate access codes if staff have changed (edit the Tenure holders sheet; tell the companies).
+**Mid September (owner of the flow):**
+- Confirm the flow is On, its owner account still holds the Premium licence, and the connections are not expired (My flows, the flow, Details). Fix any "connection needs attention" banner.
+- POST `sample_request.json` once (section 3 step 1 and 2) and delete the test rows afterwards. This proves the trigger URL still works; Microsoft has moved HTTP trigger hosts before and the old URL stops working on a date they announce.
+- Confirm "Who can trigger the flow" is still Anyone, and that the receipt email arrived from OGIA.UWIR (Send As still works).
+- Open the hosted page, sign in with a code: no CORS error, no "address out of date" message.
+- Delete the `MGA-EXAMPLE` row if it is still in MGA data.
 
-## 6. Optional flow B: file emailed reports automatically (standard connectors)
+**1 October:** the page automatically offers the period that just ended (for example 2025-26, due 31 October 2026). Reports for a period that has not ended are kept as drafts.
 
-Trigger **When a new email arrives in a shared mailbox (V2)** on OGIA.UWIR, folder Inbox, Subject Filter `MGA annual report`. Then **Html to text** (Content Conversion) on the message body, a **Condition** that the text contains `<<MGA-JSON>>`, a **Compose** that cuts the text between `<<MGA-JSON>>` and `<</MGA-JSON>>`, **Parse JSON** on `json(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''))`, and **Add a row into a table** mapping `body('Parse_block')?['report']?['templateRow']?['<column>']` as in flow A with Source `Email`. If the block is missing (someone emailed the Excel file by hand), **Flag** the email for manual entry. Full detail in `flow_B_email_fallback.definition.json`.
+**October (OGIA mailbox owner):**
+- Watch the OGIA.UWIR Inbox for flagged emails and "ACTION needed" notices: those reports were emailed and need to be pasted into MGA data by hand (Source = Manual; copy ClientRef from the attached file) or checked with the company (unverified sender).
+- Filter MGA data by Reporting period; where a bore has several Submission IDs keep the latest (Replaces submission names the earlier one). Spot-check Source = Email rows against the sender's domain.
+- Rows arriving after 31 October show in the officers' list with a Late badge; the Submitted at column is the evidence.
+
+**November:** copy the register to the records system as the workbook of record. Rotate access codes if company staff have changed (edit the Tenure holders sheet; tell the companies). Reconcile: one current row per bore per tenure holder.
+
+## 6. Optional flow B: file emailed reports automatically (standard connectors, about 30 minutes)
+
+Trigger **When a new email arrives in a shared mailbox (V2)** on `OGIA.UWIR@dlgwv.qld.gov.au`, folder Inbox, Subject Filter `MGA lodgement by email` (the subject the page writes). In the trigger's Settings add two **Trigger conditions**, so flow A's own receipts and anything the OGIA mailbox sends never start a run:
+- `@not(startsWith(toLower(string(coalesce(triggerOutputs()?['body/subject'], ''))), 'mga annual report received'))`
+- `@not(equals(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), 'ogia.uwir@dlgwv.qld.gov.au'))`
+
+Then, in order (names as before, spaces become underscores in expressions):
+1. **Html to text** (Content Conversion) on the message body.
+2. **Condition** `Has block`: `indexOf(body('Html_to_text'), '<<MGA-JSON>>')` is greater than `-1` AND `indexOf(body('Html_to_text'), '<</MGA-JSON>>')` is greater than `-1`.
+   - **If no**: **Flag email (V2)** (Message Id from the trigger, Flag Status `flagged`, Original Mailbox Address OGIA.UWIR), then **Send an email (V2)** to OGIA.UWIR with subject `ACTION needed: emailed make good report needs manual entry` and the body from the definition file. The page omits the block when the comments are long, so this branch is normal, not an error.
+   - **If yes**, continue:
+3. **Compose** `Block`: `substring(body('Html_to_text'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12), sub(indexOf(body('Html_to_text'), '<</MGA-JSON>>'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12)))`
+4. **Compose** `Decoded`: `base64ToString(replace(replace(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''), decodeUriComponent('%09'), ''), ' ', ''))` (the block is base64, so removing the line breaks and spaces that mail programs insert changes nothing the submitter typed).
+5. **Parse JSON** `Parse block`: content `json(outputs('Decoded'))`, schema from the definition file. Keys: `h` holder code, `p` period, `e` email, `n` name, `ref` client reference, `rep` replaced submission, `app` version, `r` the row with `rn, bas, bad, sod, bao, mgs, agd, mgt, dcs, dcd, cmt, bn` (RN, Bore assessment status, Bore assessment date, Submitted to OGIA date, Bore assessment outcome, MGA status, Agreement Date, Make good measure type, Decommission status, Decommission date, Comments, Bore name).
+6. **List rows present in a table** `Lookup tenure holder` on `TenureHolders`, Filter Query `concat('Code eq ''', toUpper(string(coalesce(body('Parse_block')?['h'], ''))), '''')`, and **Compose** `Holder row` exactly as in flow A step 4.
+7. **Condition** `Check sender` (AND): `length(body('Lookup_tenure_holder')?['value'])` greater than `0`; `toLower(string(coalesce(outputs('Holder_row')?['Active'], '')))` equal to `yes`; `length(string(coalesce(outputs('Holder_row')?['EmailDomain'], '')))` greater than `1`; `endsWith(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), toLower(string(coalesce(outputs('Holder_row')?['EmailDomain'], '#none'))))` equal to `true`.
+   - **If no**: **Flag email (V2)** and **Send an email (V2)** to OGIA.UWIR, subject `ACTION needed: emailed make good report from an unverified sender`, body from the definition file. Nothing is filed: an email cannot carry the access code, so the sender's domain is the only check, and it must match the Tenure holders sheet.
+   - **If yes**: **Compose** `Client ref` = `toUpper(replace(string(coalesce(body('Parse_block')?['ref'], '')), ' ', ''))`; **List rows present in a table** `Find existing` on `MGAData` with the same Filter Query as flow A step 7.ii; **Condition** `Already filed` (`length(body('Find_existing')?['value'])` greater than `0`): if yes a **Compose** noting the duplicate, if no **Add a row into a table** on `MGAData`: Tenure Holder = `outputs('Holder_row')?['HolderName']`, RN = `body('Parse_block')?['r']?['rn']`, each template column = `body('Parse_block')?['r']?['<short key>']`, Reporting period = `body('Parse_block')?['p']`, Submission ID = `concat('EMAIL-', outputs('Client_ref'))`, Submitted at = `convertTimeZone(utcNow(), 'UTC', 'E. Australia Standard Time', 'yyyy-MM-dd HH:mm')`, Submitted by = `triggerOutputs()?['body/from']`, Submitter name = `body('Parse_block')?['n']`, Replaces submission = `body('Parse_block')?['rep']`, Source = `Email`, App version = `body('Parse_block')?['app']`, ClientRef = `outputs('Client_ref')`.
+
+Test it by sending `sample_email.txt` (subject line and body) from an address on a listed domain to OGIA.UWIR, and once more from a personal address: the first files a row with Submission ID `EMAIL-...`, the second is flagged. Full detail in `flow_B_email_fallback.definition.json`.
 
 ## 7. Security notes for the director
 
-- The access code is a shared secret per company, sent over HTTPS and checked by OGIA's flow together with the officer's email domain. It stops casual misuse and mistakes, not a determined insider; the receipt copied to the OGIA mailbox and the Submitted by column make every submission attributable and reviewable.
-- The flow URL contains a signature that lets anyone who has it call the flow; without a valid access code the flow only answers 403 and writes nothing. Regenerate the key (trigger settings) if the URL leaks, then update `endpoint`.
-- The page never stores reports anywhere but the officer's browser and OGIA's register; nothing goes to a third party. The register holds no bore owner names, phone numbers or money amounts: the form blocks those in comments.
+- The access code is a shared secret per company, sent over HTTPS and checked by OGIA's flow together with the officer's email domain. It stops casual misuse and mistakes, not a determined insider; the receipt copied to the OGIA mailbox and the Submitted by column make every submission attributable and reviewable. The Tenure Holder written to the register always comes from OGIA's own Tenure holders sheet, so a code for one company cannot file rows under another company's name.
+- The flow URL contains a signature that lets anyone who has it call the flow; without a valid access code the flow only answers 403 and writes nothing. Regenerate the key (trigger settings) if the URL leaks, then update `endpoint` and re-publish the page. Until the page is updated, officers see "submission address out of date" and lodge by email.
+- Email lodgement cannot carry the access code. Flow B therefore files an emailed report only when the sender's domain matches the company's EmailDomain; anything else is flagged for a person to check. Sender addresses can be forged from outside unless the department rejects mail that fails DMARC, so treat Source = Email rows as needing a glance.
+- The page never stores reports anywhere but the officer's browser and OGIA's register; nothing goes to a third party. The register holds no bore owner names, phone numbers or money amounts: the form blocks those in comments, and the receipt email escapes whatever text the submitter typed.
+- The demonstration copy (no endpoint set) shows fictitious statuses against real bore numbers; every demo comment starts with "(demo text)" and demo exports are marked "DEMONSTRATION DATA". Keep the demo copy off public pages once the live page exists.
 
 ## Questions to settle with the director
 

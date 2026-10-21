@@ -564,7 +564,8 @@
     emailFallback: true,                                 // when the flow cannot be reached, offer to send the report by email instead
     tenureUrl: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/petroleum_replace_WFL1/FeatureServer/0",   // UWIR 2025 tenure with Responsible_tenure_Holder
     holders: ["ARROW", "ORIGIN", "SANTOS", "QGC"],      // companies that can report; codes match the tenure layer and the TenureHolders sheet of the master workbook
-    appVersion: "3.0.0",
+    appVersion: "3.1.0",
+    timeoutMs: 45000,                                    // how long the page waits for the flow before offering Try again / email
   };
   CONFIG.BORES_URL = CONFIG.SERVICE_BASE + "/0";
   CONFIG.TS_URL = CONFIG.SERVICE_BASE + "/2";
@@ -986,7 +987,7 @@
     b.append(dl2, el("h3", null, "Keyboard"),
       el("p", null, el("kbd", null, "/"), " focus the RN search · ", el("kbd", null, "?"), " open help · ", el("kbd", null, "Esc"), " close popovers, panels and the chart"),
       el("h3", null, "Make good agreement reporting (tenure holders)"),
-      el("p", null, "Section 437B of the Water Act 2000 requires responsible tenure holders with make good obligations for a water bore to lodge an annual report with OGIA by 31 October, covering 1 October to 30 September. The MGA reporting button opens the form: one report per bore, with the bore assessment status and outcome, the make good agreement status, the agreed measures, decommissioning, and a progress update. Reports must not include any monetary amount paid or proposed to be paid to the bore owner. Company staff sign in with the access code OGIA issued to their company and their work email; each submission goes straight to OGIA's reporting mailbox and master register, and the sender receives a receipt."),
+      el("p", null, "Section 437B of the Water Act 2000 requires responsible tenure holders with make good obligations for a water bore to lodge an annual report with OGIA by 31 October, covering 1 October to 30 September. The MGA reporting button opens the form: one report per bore, with the bore assessment status and outcome, the make good agreement status, the agreed measures, decommissioning, and a progress update. Reports must not include any monetary amount paid or proposed to be paid to the bore owner. Company staff sign in with the access code OGIA issued to their company and their work email; " + (CONFIG.MGA.endpoint ? "each submission goes straight to OGIA's reporting mailbox and master register, and the sender receives a receipt." : "this copy runs in demonstration mode: nothing is sent to OGIA and the reports shown are fictitious.")),
       el("h3", null, "About the data"),
       el("p", null, `Bore assessment data and prediction timeseries are published by OGIA as ArcGIS feature services (data release: ${CONFIG.DATA_VINTAGE}). Timeseries values are whole metres of predicted drawdown at monthly steps to 2025, quarterly to about 2070 and coarser after that. Rows dated beyond the year 2999 are model placeholders and are not shown.`),
       el("p", null, TEXT.trigger));
@@ -2047,16 +2048,19 @@
       return { errors, warnings, ok: errors.length === 0 };
     }
     function toRow(r) {
-      return { "Tenure Holder": holderName(r.holder), "RN": /^\d+$/.test(String(r.rn || "")) ? Number(r.rn) : (r.rn || ""), "Bore assessment status": r.assessStatus || "", "Bore assessment date": toDmy(r.assessDate), "Submitted to OGIA date": toDmy(r.submittedDate), "Bore assessment outcome": r.outcome || "", "MGA status": r.mgaStatus || "", "Agreement Date": toDmy(r.agreementDate), "Make good measure type": measureText(r), "Decommission status": r.decomStatus || "", "Decommission date": toDmy(r.decomDate), "Comments": r.comments || "", "Bore name": r.boreName || "", "Reporting period": r.period || "", "Report status": r.status || "", "Submission ID": r.submissionId || "" };
+      return { "Tenure Holder": holderName(r.holder), "RN": /^\d+$/.test(String(r.rn || "")) ? Number(r.rn) : (r.rn || ""), "Bore assessment status": r.assessStatus || "", "Bore assessment date": toDmy(r.assessDate), "Submitted to OGIA date": toDmy(r.submittedDate), "Bore assessment outcome": r.outcome || "", "MGA status": r.mgaStatus || "", "Agreement Date": toDmy(r.agreementDate), "Make good measure type": measureText(r), "Decommission status": r.decomStatus || "", "Decommission date": toDmy(r.decomDate), "Comments": r.comments || "", "Bore name": r.boreName || "", "Reporting period": r.period || "", "Report status": r.status === "email-pending" ? "emailed, not confirmed" : (r.status || ""), "Submission ID": r.submissionId || "" };
     }
     function toCsv(records) {
       const q = (v) => { let s = v == null ? "" : String(v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       return [COLUMNS.join(","), ...records.map(r => { const row = toRow(r); return COLUMNS.map(c => q(row[c])).join(","); })].join("\n");
     }
     const newId = () => "r" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-    const blank = (holder, period, rn) => ({ id: newId(), oid: null, holder, period, rn: rn ? String(rn) : "", boreName: "", assessStatus: "", assessDate: "", submittedDate: "", outcome: "", mgaStatus: "", agreementDate: "", measures: [], measureDetail: "", decomStatus: "", decomDate: "", comments: "", status: "draft", created: null, updated: null, submitted: null, amendedFrom: null, by: "", submissionId: "", receiptTo: "", source: "", replacesSubmissionId: null });
+    /* Client reference: one per report version (new on each amendment). OGIA's flow files it with the row and recognises a repeat of the same version, so a retry after a timeout never creates a second row. Alphanumeric so it can be used in an Excel filter. */
+    const newRef = () => ("C" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).toUpperCase();
+    const refFor = (r) => r.clientRef || (r.clientRef = newRef());
+    const blank = (holder, period, rn) => ({ id: newId(), oid: null, holder, period, rn: rn ? String(rn) : "", boreName: "", assessStatus: "", assessDate: "", submittedDate: "", outcome: "", mgaStatus: "", agreementDate: "", measures: [], measureDetail: "", decomStatus: "", decomDate: "", comments: "", status: "draft", created: null, updated: null, submitted: null, emailOpened: null, amendedFrom: null, by: "", submissionId: "", receiptTo: "", source: "", replacesSubmissionId: null, clientRef: newRef() });
     const measureText = (r) => (r.measures || []).map(m => (m === "Other" || m === "Replacement bore") && (r.measureDetail || "").trim() ? `${m} (${r.measureDetail.trim()})` : m).join("; ");
-    return { HOLDERS, holderName, DOMAINS, DESC, COLUMNS, periodFor, currentPeriod, periodOptions, periodByKey, isoOk, toDmy, moneyHit, piiHit, executedStatus, validate, toRow, toCsv, blank, measureText };
+    return { HOLDERS, holderName, DOMAINS, DESC, COLUMNS, periodFor, currentPeriod, periodOptions, periodByKey, isoOk, toDmy, moneyHit, piiHit, executedStatus, validate, toRow, toCsv, blank, measureText, newRef, refFor };
   })();
 
   /* Demo seed: real Surat CMA bores with their OGIA-recorded make good status, assigned to the tenure holder whose UWIR 2025 tenure they sit in */
@@ -2083,7 +2087,7 @@
         if (s.assessed) { r.assessDate = `${cur.endYear - 1}-11-1${i % 9}`; r.submittedDate = `${cur.endYear - 1}-12-0${1 + (i % 8)}`; r.outcome = s.boreStatus.startsWith("Abandoned") ? "Assessment unsucessful" : "Impaired"; }
         r.mgaStatus = s.mga === "Not triggered" ? "Not Required" : s.mga;
         if (r.mgaStatus === "Finalised MGA") { r.agreementDate = `${cur.endYear - 2}-0${3 + (i % 6)}-15`; r.measures = s.boreStatus.startsWith("Abandoned") ? ["Financial compensation", "Monitoring"] : ["Replacement bore", "Monitoring"]; if (r.measures.includes("Replacement bore")) r.measureDetail = `RN ${s.rn + 100000}`; r.decomStatus = s.boreStatus === "Abandoned and destroyed" ? "Decommissioned" : "No decommissioning planned"; if (r.decomStatus === "Decommissioned") r.decomDate = `${cur.endYear - 1}-0${2 + (i % 7)}-20`; }
-        r.comments = r.mgaStatus === "In negotiations" ? "Landholder met on site twice during the period; a draft agreement was issued and is under review by the landholder's adviser." : r.mgaStatus === "Not Required" ? "The bore assessment found the bore is not operational and is not relied on for supply, so make good is not required. Monitoring of nearby bores continues." : r.mgaStatus === "Finalised MGA" ? "Agreed measures implemented; monitoring visits completed each quarter of the period." : "Landholder contacted by letter and phone during the period; no response received yet.";
+        r.comments = "(demo text) " + (r.mgaStatus === "In negotiations" ? "Landholder met on site twice during the period; a draft agreement was issued and is under review by the landholder's adviser." : r.mgaStatus === "Not Required" ? "The bore assessment found the bore is not operational and is not relied on for supply, so make good is not required. Monitoring of nearby bores continues." : r.mgaStatus === "Finalised MGA" ? "Agreed measures implemented; monitoring visits completed each quarter of the period." : "Landholder contacted by letter and phone during the period; no response received yet.");   // fictitious statuses on real RNs: say so in every exported row
         r.status = i % 3 === 0 ? "draft" : "submitted"; r.created = now - 86400000 * (30 + i); r.updated = r.created;
         if (r.status === "submitted") { r.submitted = r.created; r.submissionId = `DEMO-${cur.endYear}${String(10 + i)}-${String(s.rn).padStart(6, "0")}`; r.receiptTo = "demo." + s.holder.toLowerCase() + "@example.com"; }
         r.by = "demo";
@@ -2101,18 +2105,32 @@
       async save(rec, role) { if (!role || role.kind !== "holder" || !role.holders.includes(rec.holder)) throw new Error("Your role cannot edit reports for " + MGA.holderName(rec.holder) + "."); const rows = all(); const i = rows.findIndex(r => r.id === rec.id); rec.updated = Date.now(); if (!rec.created) rec.created = rec.updated; if (i >= 0) rows[i] = rec; else rows.push(rec); write(rows); return rec; },
     };
   }
-  /* Transport to OGIA's Power Automate flow. The body is JSON sent as text/plain so the browser makes a simple request (no preflight); the flow parses it with json(triggerBody()). */
+  /* Transport to OGIA's Power Automate flow. The body is JSON sent as text/plain so the browser makes a simple request (no preflight); the flow parses it with json(string(triggerBody())).
+     Error kinds: network (no answer or timed out), unavailable (the Power Automate gateway answered instead of the flow: throttled, run failed, timed out), config (this page's flow URL is stale: 401/404),
+     server (the flow could not write the register), rejected (the flow refused the content or the access code), noreceipt (200 without a usable receipt number). The first four offer the email fallback. */
   class FlowError extends Error { constructor(kind, message, status) { super(message); this.kind = kind; this.status = status; } }
-  async function postFlow(payload) {
+  const OFFLINE_KINDS = ["network", "unavailable", "config"], FALLBACK_KINDS = ["network", "unavailable", "config", "server"];
+  async function postFlow(payload, { retried } = {}) {
     const url = CONFIG.MGA.endpoint; if (!url) throw new FlowError("config", "No submission endpoint is configured.");
-    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 45000);
+    const ctl = new AbortController(), waitMs = CONFIG.MGA.timeoutMs || 45000; const t = setTimeout(() => ctl.abort(), waitMs);
     let res;
     try { res = await fetch(url, { method: "POST", mode: "cors", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(payload), signal: ctl.signal }); }
-    catch (e) { clearTimeout(t); throw new FlowError("network", ctl.signal.aborted ? "OGIA's submission service did not answer within 45 seconds." : "OGIA's submission service could not be reached."); }
+    catch (e) { clearTimeout(t); throw new FlowError("network", ctl.signal.aborted ? `OGIA's submission service did not answer within ${Math.round(waitMs / 1000)} seconds. It may still have received the report: wait a minute and choose Try again. A repeat of the same report is recognised and is not filed twice.` : "OGIA's submission service could not be reached. Check your connection and try again."); }
     clearTimeout(t);
     let data = null; try { data = await res.json(); } catch (e) { data = null; }
-    if (!res.ok || !data || data.ok !== true) throw new FlowError(res.status >= 500 ? "server" : "rejected", (data && (data.error || data.message)) || `The submission service answered ${res.status}.`, res.status);
-    return data;
+    const fromFlow = !!data && typeof data.ok === "boolean";   // the flow's own responses always carry ok; the gateway's errors carry { error: { code, message } } or no JSON at all
+    if (fromFlow && data.ok === true) {
+      if (payload.action === "submit" && !(typeof data.submissionId === "string" && data.submissionId.length > 0 && data.submissionId.length <= 40)) throw new FlowError("noreceipt", "OGIA's service accepted the report but returned no receipt number. Check with OGIA before submitting it again.", res.status);
+      return data;
+    }
+    const gw = data && data.error && typeof data.error === "object" ? data.error : null;
+    const msg = data ? (typeof data.error === "string" ? data.error : (gw && typeof gw.message === "string" ? gw.message : (typeof data.message === "string" ? data.message : ""))) : "";
+    if (res.status === 429 && !retried) { await new Promise(r => setTimeout(r, 3000)); return postFlow(payload, { retried: true }); }   // throttled: one quiet retry
+    if (!fromFlow) {
+      if (res.status === 401 || res.status === 404) throw new FlowError("config", "This page's submission address for OGIA is out of date. Send the report by email, and tell OGIA that the Bore Search Tool needs its submission address updated.", res.status);
+      throw new FlowError("unavailable", `OGIA's submission service is not responding normally (${res.status}${gw && gw.code ? ", " + gw.code : ""}). Try again in a few minutes.`, res.status);
+    }
+    throw new FlowError(res.status >= 500 ? "server" : "rejected", msg || `The submission service answered ${res.status}.`, res.status);
   }
   const Mga = {
     store: null, role: null, period: null, view: "list", rec: null, readOnly: false, touched: false, rows: [], holderFilter: "", autosaveTimer: null, savedAt: null, xlsxLoading: null,
@@ -2125,6 +2143,8 @@
       this.store = makeLocalStore({ key: demo ? "ogia.bst.mga.demo.v1" : "ogia.bst.mga.live.v1", seeded: demo });
       this.role = this.store.getRole();
       if (this.role && this.role.kind === "holder" && this.role.demo !== demo) this.role = null;   // never carry a demo role into live mode
+      this.access = (this.role && this.role.kind === "holder" && this.role.access && this.role.access.code) ? this.role.access : null;   // the code and email travel with the role for the tab's life
+      if (!demo && this.role && !this.access) this.role = null;   // a live role without its code cannot submit: ask to sign in again
       this.initialising = false;
     },
     async open(opts = {}) {
@@ -2134,6 +2154,7 @@
       this.urlOpen = true; Url.sync({ push: false });
       if (opts.rn && this.role && this.role.kind === "holder") await this.newFor(opts.rn); else await this.render();
       this.el.close.focus();
+      if (this.role && this.role.offline) this.reverify(false);
     },
     close() { this.el.sheet.classList.remove("open"); D.sheetBg.classList.remove("open"); setTimeout(() => { this.el.sheet.hidden = true; }, 200); this.el.btn.focus(); this.urlOpen = false; Url.sync({ push: false }); },
     async openNew(rn) { await this.open({ rn }); },
@@ -2155,12 +2176,25 @@
         this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${res.holderName || MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access };
         this.store.setRole(this.role); this.view = "list"; if (S.bore) renderCard(S.bore); this.render();
       } catch (e) {
-        if (e.kind === "network" && CONFIG.MGA.emailFallback) {
-          this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access, offline: true };
+        if (OFFLINE_KINDS.includes(e.kind) && CONFIG.MGA.emailFallback) {
+          this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access, offline: true, offlineWhy: e.kind };
           this.store.setRole(this.role); this.view = "list"; if (S.bore) renderCard(S.bore); this.render();
-          Toast.warn("OGIA's submission service could not be reached. You can prepare reports now; submission will go by email until it is back.", { ms: 9000 });
+          Toast.warn(e.kind === "config" ? "This page's submission address for OGIA is out of date; please tell OGIA. You can prepare reports now and send them by email." : "OGIA's submission service could not be reached. You can prepare reports now; the page retries when you submit and offers email if the service is still down.", { ms: 10000 });
         } else err(e.message || "Sign in failed.");
       } finally { setBusy("mga", false); }
+    },
+    /* An offline role is provisional: re-check the service (a verify writes nothing) and clear the flag as soon as it answers. A rejected code signs the user out. */
+    async reverify(manual) {
+      if (!this.role || !this.role.offline || !this.access || this.reverifying) return false; this.reverifying = true;
+      try {
+        const res = await postFlow(this.payload("verify"));
+        this.role = { ...this.role, offline: false, offlineWhy: null, name: `${res.holderName || MGA.holderName(this.access.holder)} · ${this.access.email}` };
+        this.store.setRole(this.role); this.renderBanner(); Toast.ok("OGIA's submission service is available again. Reports now go straight to OGIA.", { ms: 7000 }); return true;
+      } catch (e) {
+        if (e.kind === "rejected") { Toast.err(e.message + " Please sign in again.", { ms: 9000 }); this.signOut(); return false; }
+        if (manual) Toast.warn(e.message, { ms: 9000 });
+        return false;
+      } finally { this.reverifying = false; }
     },
     signOut() { this.role = null; this.access = null; this.store.setRole(null); this.view = "list"; this.rec = null; if (S.bore) renderCard(S.bore); this.render(); },
     /* ---------- rendering ---------- */
@@ -2180,6 +2214,7 @@
       } else {
         bn.className = "mga-banner live";
         bn.append(icon("info"), el("span", { "data-testid": "mga-role-name" }, this.role ? `Reporting as ${this.role.name}` + (this.role.offline ? " (service unavailable: email submission)" : "") : "Reports go to OGIA's reporting mailbox and master register"), el("span", { class: "spacer" }));
+        if (this.role && this.role.offline) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-retry", onclick: () => this.reverify(true) }, "Retry connection"));
         if (this.role) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-signout", onclick: () => this.signOut() }, "Sign out"));
       }
     },
@@ -2227,8 +2262,8 @@
       let rows = [];
       try { rows = await this.store.list({ period: this.period, holders }); } catch (e) { skel.remove(); b.append(el("div", { class: "banner" }, el("span", null, "The reports could not be loaded: " + ((e && e.message) || e)))); return; }
       skel.remove(); this.rows = rows.filter(r => r.status !== "withdrawn"); this.withdrawn = rows.filter(r => r.status === "withdrawn");
-      const live = this.rows, nSub = live.filter(r => r.status === "submitted").length, nDraft = live.length - nSub;
-      b.append(el("div", { class: "count-head", "data-testid": "mga-count" }, live.length ? `${live.length} report${live.length === 1 ? "" : "s"} for period ${this.period}: ${nSub} submitted, ${nDraft} draft` + (this.withdrawn.length ? ` (${this.withdrawn.length} withdrawn hidden)` : "") : `No reports yet for period ${this.period}.`));
+      const live = this.rows, nSub = live.filter(r => r.status === "submitted").length, nPend = live.filter(r => r.status === "email-pending").length, nDraft = live.length - nSub - nPend;
+      b.append(el("div", { class: "count-head", "data-testid": "mga-count" }, live.length ? `${live.length} report${live.length === 1 ? "" : "s"} for period ${this.period}: ${nSub} submitted, ` + (nPend ? `${nPend} awaiting email confirmation, ` : "") + `${nDraft} draft` + (this.withdrawn.length ? ` (${this.withdrawn.length} withdrawn hidden)` : "") : `No reports yet for period ${this.period}.`));
       if (!isReviewer && !live.length) b.append(el("div", { class: "card" }, el("h3", null, "Start your first report"), el("p", null, "Add one report per bore for which your company has make good obligations. You can also open any bore on the map and choose \"Report on this bore\"."), el("button", { class: "btn primary", type: "button", onclick: () => this.newFor("") }, "New report")));
       this.listEl = el("div", { "data-testid": "mga-list" }); b.append(this.listEl); this.renderRows();
       b.append(el("details", { style: "margin-top:14px" }, el("summary", null, "What the annual report must contain"), el("div", { class: "prose", style: "font-size:13.5px;margin-top:8px" },
@@ -2247,12 +2282,12 @@
         const late = r.submitted && per && r.submitted > per.due;
         list.append(el("button", { class: "mga-row", type: "button", "data-testid": "mga-row", dataset: { id: r.id, status: r.status }, onclick: () => this.edit(r) },
           el("span", { class: "rn num" }, r.rn ? "RN " + r.rn : (r.boreName || "Unregistered bore"), r.rn && r.boreName ? el("small", null, r.boreName) : null, isReviewer ? el("small", null, MGA.holderName(r.holder)) : null),
-          el("span", { class: "meta" }, el("b", null, r.mgaStatus || "MGA status not set"), " · ", r.assessStatus || "assessment status not set", r.updated ? ` · updated ${M.fmtDate(r.updated)}` : "", r.submissionId && r.status === "submitted" ? ` · receipt ${r.submissionId}` : "", r.amendedFrom ? " · edited after submission" : ""),
-          el("span", null, el("span", { class: "rstat " + (r.status || "draft") }, r.status === "submitted" ? "Submitted" : r.status === "amended" ? "Amended" : "Draft"), late ? el("span", { class: "rstat amended", style: "margin-left:4px", "data-testid": "mga-late" }, "Late") : null)));
+          el("span", { class: "meta" }, el("b", null, r.mgaStatus || "MGA status not set"), " · ", r.assessStatus || "assessment status not set", r.updated ? ` · updated ${M.fmtDate(r.updated)}` : "", r.submissionId && (r.status === "submitted" || r.status === "email-pending") ? (r.source === "email" ? ` · reference ${r.submissionId}` : ` · receipt ${r.submissionId}`) : "", r.amendedFrom ? " · edited after submission" : ""),
+          el("span", null, el("span", { class: "rstat " + (r.status === "email-pending" ? "amended" : (r.status || "draft")) }, r.status === "submitted" ? "Submitted" : r.status === "email-pending" ? "Email not confirmed" : r.status === "amended" ? "Amended" : "Draft"), late ? el("span", { class: "rstat amended", style: "margin-left:4px", "data-testid": "mga-late" }, "Late") : null)));
       });
     },
     async newFor(rn) { const holder = this.activeHolder || this.role.holders[0]; this.rec = MGA.blank(holder, this.period, rn); this.readOnly = false; this.touched = false; this.view = "form"; await this.render(); if (rn) this.checkBore(); },
-    edit(r) { this.rec = JSON.parse(JSON.stringify(r)); this.readOnly = this.role.kind === "reviewer" || r.status === "submitted"; this.touched = false; this.view = "form"; this.render(); },
+    edit(r) { this.rec = JSON.parse(JSON.stringify(r)); this.readOnly = this.role.kind === "reviewer" || r.status === "submitted" || r.status === "email-pending"; this.touched = false; this.view = "form"; this.render(); },
     backToList() { clearTimeout(this.autosaveTimer); this.view = "list"; this.rec = null; this.render(); },
     field(label, control, { help, err, testid, id } = {}) {
       const w = el("div", { class: "field", dataset: { field: id || "" } }, el("label", { class: "label", for: control.id || null }, label), control);
@@ -2294,9 +2329,14 @@
       const b = this.el.body, r = this.rec, ro = this.readOnly, scroll = keepScroll ? b.scrollTop : 0;
       b.textContent = "";
       const per = MGA.periodByKey(r.period) || MGA.currentPeriod(Date.now());
-      b.append(el("div", { class: "mga-toolbar" }, el("button", { class: "btn small", type: "button", "data-testid": "mga-back", onclick: () => this.backToList() }, "‹ Back to list"), el("span", { class: "chip" }, `Period ${per.key}: ${per.label}`), el("span", { class: "chip" }, MGA.holderName(r.holder)), r.status === "submitted" ? el("span", { class: "rstat submitted", "data-testid": "mga-form-status" }, "Submitted " + (r.submitted ? M.fmtDate(r.submitted) : "")) : el("span", { class: "rstat " + r.status, "data-testid": "mga-form-status" }, r.status === "amended" ? "Amended, not yet resubmitted" : "Draft")));
-      if (r.status === "submitted" && r.submissionId) b.append(el("div", { class: "mga-receipt", "data-testid": "mga-receipt" }, r.source === "email" ? `Sent by email to ${CONFIG.MGA.submitEmail} on ${M.fmtDate(r.submitted)} (reference ${r.submissionId}).` : `Receipt ${r.submissionId}` + (r.receiptTo ? `, emailed to ${r.receiptTo}` : "") + ` on ${M.fmtDate(r.submitted)}.`));
-      if (ro && this.role.kind !== "reviewer") b.append(el("div", { class: "card", style: "display:flex;gap:10px;align-items:center" }, el("span", { style: "flex:1;font-size:13.5px" }, "This report has been submitted and is locked. Amend it only if a detail was wrong; OGIA will see the amended version."), el("button", { class: "btn small", type: "button", "data-testid": "mga-amend", onclick: () => this.amend() }, "Amend")));
+      const pending = r.status === "email-pending";
+      b.append(el("div", { class: "mga-toolbar" }, el("button", { class: "btn small", type: "button", "data-testid": "mga-back", onclick: () => this.backToList() }, "‹ Back to list"), el("span", { class: "chip" }, `Period ${per.key}: ${per.label}`), el("span", { class: "chip" }, MGA.holderName(r.holder)), r.status === "submitted" ? el("span", { class: "rstat submitted", "data-testid": "mga-form-status" }, "Submitted " + (r.submitted ? M.fmtDate(r.submitted) : "")) : el("span", { class: "rstat " + (pending ? "amended" : r.status), "data-testid": "mga-form-status" }, pending ? "Emailed, awaiting your confirmation" : r.status === "amended" ? "Amended, not yet resubmitted" : "Draft")));
+      if (r.status === "submitted" && r.submissionId) b.append(el("div", { class: "mga-receipt", "data-testid": "mga-receipt" }, r.source === "email" ? `Sent by email to ${CONFIG.MGA.submitEmail} on ${M.fmtDate(r.submitted)} (reference ${r.submissionId}). Your sent email is the proof of lodgement.` : `Receipt ${r.submissionId}` + (r.receiptTo ? `, emailed to ${r.receiptTo}` : "") + ` on ${M.fmtDate(r.submitted)}.`));
+      if (pending) b.append(el("div", { class: "mga-receipt", style: "background:var(--amber-bg);color:var(--amber-fg)", "data-testid": "mga-receipt" }, `An email to ${CONFIG.MGA.submitEmail} was prepared on ${M.fmtDate(r.emailOpened || Date.now())} (reference ${r.submissionId}) but you have not confirmed that it was sent.`));
+      if (ro && this.role.kind !== "reviewer") b.append(el("div", { class: "card", style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, el("span", { style: "flex:1;font-size:13.5px;min-width:200px" }, pending ? "Once the email with the Excel file attached has gone to OGIA, confirm it here. If nothing opened, use the email text to send it yourself." : "This report has been submitted and is locked. Amend it only if a detail was wrong; OGIA will see the amended version."),
+        pending ? el("button", { class: "btn small", type: "button", "data-testid": "mga-email-text", onclick: () => this.showEmailText(r) }, "Show the email text") : null,
+        pending ? el("button", { class: "btn small primary", type: "button", "data-testid": "mga-email-sent", onclick: () => this.markEmailSent(r) }, "I have sent the email") : null,
+        el("button", { class: "btn small", type: "button", "data-testid": "mga-amend", onclick: () => this.amend() }, "Amend")));
       const form = el("form", { class: "mga-form", "data-testid": "mga-form", novalidate: true, onsubmit: (e) => { e.preventDefault(); this.submit(); } });
       /* Bore */
       const fs1 = el("fieldset", null, el("legend", null, "1. Bore"));
@@ -2369,7 +2409,7 @@
       if ((a.UWIR25_cat || "Not listed") === "Not listed") box.append(el("div", { class: "fwarn", style: "margin-top:4px" }, "This bore is not on the UWIR 2025 list of affected bores. A report is only required where make good obligations exist."));
       const bn = $("mga_boreName"); if (bn && !this.rec.boreName && a.Bore_purpose) { /* leave bore name to the user */ }
     },
-    async duplicateOf(rec) { const rows = await this.store.list({ period: rec.period, holders: [rec.holder] }); const rn = String(rec.rn || "").trim(); return rows.find(r => r.id !== rec.id && rn && String(r.rn) === rn) || null; },
+    async duplicateOf(rec) { const rows = await this.store.list({ period: rec.period, holders: [rec.holder] }); const rn = String(rec.rn || "").trim(); return rows.find(r => r.id !== rec.id && r.status !== "withdrawn" && rn && String(r.rn) === rn) || null; },   // a withdrawn report must not block a fresh one for the same bore
     async save({ silent } = {}) {
       const r = this.rec; if (!r || this.readOnly) return false;
       const dup = await this.duplicateOf(r); if (dup) { if (!silent) Toast.err(`A ${dup.status} report for RN ${r.rn} already exists for period ${r.period}. Open that report instead of creating a second one.`); return false; }
@@ -2390,7 +2430,7 @@
       const btnOk = el("button", { class: "btn primary", type: "button", "data-testid": "mga-confirm-submit", disabled: true, onclick: async () => { btnOk.disabled = true; btnOk.textContent = "Sending…"; const ok = await this.send(r); modalBg.remove(); if (ok) this.backToList(); } }, live ? "Submit to OGIA" : "Submit (demo)");
       chk.addEventListener("change", () => { btnOk.disabled = !chk.checked; });
       modalBg.append(el("div", { class: "modal mga-summary", role: "dialog", "aria-modal": "true" }, el("h3", null, `Submit the ${r.period} report for ${r.rn ? "RN " + r.rn : r.boreName}?`),
-        live ? el("div", { class: "mga-note" }, `The report goes to OGIA's reporting mailbox (${CONFIG.MGA.submitEmail}) and master register. A receipt is emailed to ${this.access ? this.access.email : "you"}.`) : null,
+        live ? el("div", { class: "mga-note" }, this.role.offline ? `OGIA's submission service was unavailable when you signed in. The page will try it again now and, if it is still down, offer to send the report by email to ${CONFIG.MGA.submitEmail}.` : `The report goes to OGIA's reporting mailbox (${CONFIG.MGA.submitEmail}) and master register. A receipt is emailed to ${this.access ? this.access.email : "you"}.`) : null,
         early ? el("div", { class: "fwarn", style: "margin-bottom:8px", "data-testid": "mga-early" }, `Period ${per.key} has not ended yet (30 Sep ${per.endYear}). In production, submission opens on 1 October; the demo lets you continue.`) : null,
         v.warnings.length ? el("div", { class: "fwarn", style: "margin-bottom:8px" }, "Before you submit: " + v.warnings.map(w => w.msg).join(" ")) : null, dl,
         el("label", { style: "display:flex;gap:8px;align-items:flex-start;margin:12px 0;font-size:13.5px" }, chk, el("span", null, "I confirm this report contains no monetary amounts and no personal contact details, and reflects the position at the end of the reporting period.")),
@@ -2404,51 +2444,101 @@
         markSubmitted({ submissionId: `DEMO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(Math.floor(Math.random() * 90000) + 10000)}`, receiptTo: this.role.user }, "demo");
         await this.store.save(r, this.role); Toast.ok(`Report submitted (demo). Receipt ${r.submissionId} stored in this browser only.`, { ms: 7000 }); return true;
       }
-      if (this.role.offline) return this.sendByEmail(r);
+      if (!this.access || !this.access.code) { Toast.err("Your sign-in details are no longer available in this tab. Sign in again, then submit.", { ms: 9000 }); this.signOut(); return false; }
+      MGA.refFor(r);
+      if (this.role.offline && !(await this.reverify(false))) { if (!this.role) return false; return await this.offerEmail(r, "OGIA's submission service is still unavailable.", "network"); }
       try {
         setBusy("mga", true);
         const report = { ...r, templateRow: MGA.toRow(r), replacesSubmissionId: r.replacesSubmissionId || null };
         const res = await postFlow(this.payload("submit", report));
         markSubmitted(res, "flow"); await this.store.save(r, this.role);
-        Toast.ok(`Report submitted to OGIA. Receipt ${res.submissionId} has been emailed to ${r.receiptTo}.`, { ms: 9000 }); return true;
+        Toast.ok(res.duplicate ? `OGIA already holds this report (receipt ${res.submissionId}); it was not filed twice.` : `Report submitted to OGIA. Receipt ${res.submissionId} has been emailed to ${r.receiptTo}.`, { ms: 9000 }); return true;
       } catch (e) {
-        if (e.kind === "network" || e.kind === "server") {
-          if (CONFIG.MGA.emailFallback) return await this.offerEmail(r, e.message);
-          Toast.err(e.message); return false;
+        if (FALLBACK_KINDS.includes(e.kind)) {
+          if (CONFIG.MGA.emailFallback) return await this.offerEmail(r, e.message, e.kind);
+          Toast.err(e.message, { ms: 9000 }); return false;
         }
+        if (e.kind === "noreceipt") { Toast.err(e.message, { ms: 12000 }); return false; }
         Toast.err("OGIA's submission service rejected the report: " + e.message, { ms: 9000 }); return false;
       } finally { setBusy("mga", false); }
     },
-    offerEmail(r, why) {
+    offerEmail(r, why, kind) {
       return new Promise((resolve) => {
-        const bg = el("div", { class: "modal-bg", "data-testid": "mga-email-offer" });
-        bg.append(el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, el("h3", null, "Submission service unavailable"), el("p", { class: "prose" }, why, " You can send this report to OGIA by email instead: the form will download the report as an Excel file and open an email to ", el("b", null, CONFIG.MGA.submitEmail), " for you to attach it to and send."),
-          el("div", { style: "display:flex;gap:8px;justify-content:flex-end" }, el("button", { class: "btn", type: "button", onclick: () => { bg.remove(); resolve(false); } }, "Keep as draft"), el("button", { class: "btn primary", type: "button", "data-testid": "mga-email-send", onclick: async () => { bg.remove(); resolve(await this.sendByEmail(r)); } }, "Send by email"))));
+        const bg = el("div", { class: "modal-bg", "data-testid": "mga-email-offer" }), retryFirst = kind === "network";
+        const again = el("button", { class: "btn" + (retryFirst ? " primary" : ""), type: "button", "data-testid": "mga-try-again", onclick: async () => { bg.remove(); resolve(await this.send(r)); } }, "Try again");
+        const mail = el("button", { class: "btn" + (retryFirst ? "" : " primary"), type: "button", "data-testid": "mga-email-send", onclick: async () => { bg.remove(); resolve(await this.sendByEmail(r)); } }, "Send by email");
+        bg.append(el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, el("h3", null, kind === "config" ? "Submission address out of date" : "Submission service unavailable"), el("p", { class: "prose" }, why),
+          el("p", { class: "prose" }, "You can send this report to OGIA by email instead: the page downloads the report as an Excel file and opens an email to ", el("b", null, CONFIG.MGA.submitEmail), " for you to attach it to and send. OGIA files emailed reports into the same register."),
+          el("div", { style: "display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap" }, el("button", { class: "btn", type: "button", onclick: () => { bg.remove(); resolve(false); } }, "Keep as draft"), again, mail)));
         document.body.append(bg);
       });
     },
+    /* Email lodgement. A short readable message plus, when the mailto link stays under 2,000 characters (longer links are dropped by Windows and some mail programs), a base64 block that OGIA's optional flow files automatically;
+       base64 survives line wrapping. The attached Excel file is the authoritative copy for manual entry. Block keys: h holder code, p period, e email, n name, ref client reference, rep replaced submission, app version, r row (rn, bas, bad, sod, bao, mgs, agd, mgt, dcs, dcd, cmt, bn). */
     emailFor(r) {
-      const row = MGA.toRow(r), a = this.access || {};
-      const subject = `MGA annual report ${r.period}: ${r.rn ? "RN " + r.rn : r.boreName} [${MGA.holderName(r.holder)}]`;
-      const lines = [`Make good agreement annual report (Water Act 2000, s437B)`, `Reporting period: ${r.period}`, ""];
-      MGA.COLUMNS.filter(c => !["Report status"].includes(c)).forEach(c => lines.push(`${c}: ${row[c] === "" ? "-" : row[c]}`));
-      lines.push("", `Submitted by: ${a.name ? a.name + " " : ""}${a.email || ""}`, `Replaces submission: ${r.replacesSubmissionId || "-"}`, "", "Sent from the OGIA Bore Search Tool. The Excel file attached reproduces the MGA data sheet of OGIA's reporting template.");
-      const machine = JSON.stringify({ v: 1, holder: r.holder, period: r.period, submitter: a.email || "", report: { ...r, templateRow: row } });
-      let body = lines.join("\n");
-      if ((body.length + machine.length) < 6000) body += `\n\n<<MGA-JSON>>${machine}<</MGA-JSON>>`;
-      return { subject, body };
+      const a = this.access || {}, ref = MGA.refFor(r), id = "EMAIL-" + ref, row = MGA.toRow({ ...r, status: "submitted", submissionId: id });
+      const subject = `MGA lodgement by email ${r.period}: ${r.rn ? "RN " + r.rn : (r.boreName || "unregistered bore")} [${MGA.holderName(r.holder)}] ${id}`;
+      const human = ["Make good agreement annual report (Water Act 2000, s437B), lodged by email because the Bore Search Tool could not reach OGIA's submission service.", "",
+        `Reference: ${id}`, `Tenure holder: ${row["Tenure Holder"]}`, `Reporting period: ${r.period}`, `Bore: ${r.rn ? "RN " + r.rn : "unregistered"}${r.boreName ? " " + r.boreName : ""}`,
+        `Bore assessment: ${row["Bore assessment status"] || "-"}${row["Bore assessment outcome"] ? " / " + row["Bore assessment outcome"] : ""}`, `MGA status: ${row["MGA status"] || "-"}`, `Make good measures: ${row["Make good measure type"] || "-"}`,
+        `Replaces submission: ${r.replacesSubmissionId || "-"}`, `Submitted by: ${a.name ? a.name + ", " : ""}${a.email || ""}`, "",
+        "The attached Excel file holds the full row in OGIA's template layout, including the comments. Please attach it before sending."];
+      const keys = { rn: "RN", bas: "Bore assessment status", bad: "Bore assessment date", sod: "Submitted to OGIA date", bao: "Bore assessment outcome", mgs: "MGA status", agd: "Agreement Date", mgt: "Make good measure type", dcs: "Decommission status", dcd: "Decommission date", cmt: "Comments", bn: "Bore name" };
+      const short = {}; Object.entries(keys).forEach(([k, c]) => { if (row[c] !== "" && row[c] != null) short[k] = row[c]; });
+      const block = { v: 2, h: r.holder, p: r.period, e: a.email || "", n: a.name || "", ref, rep: r.replacesSubmissionId || null, app: CONFIG.MGA.appVersion, r: short };
+      const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(block))));
+      const href = (body) => `mailto:${encodeURIComponent(CONFIG.MGA.submitEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const full = [human[0], "", `<<MGA-JSON>>${b64}<</MGA-JSON>>`, "", ...human.slice(2)].join("\n");
+      const fits = href(full).length <= 2000, body = fits ? full : human.join("\n");
+      return { to: CONFIG.MGA.submitEmail, subject, body, href: href(body), hasBlock: fits, full, ref, id };
     },
     async sendByEmail(r) {
-      const { subject, body } = this.emailFor(r);
-      try { await this.exportXlsx({ rows: [r], name: `MGA_report_${r.holder}_${r.period}_${r.rn || "unregistered"}.xlsx`, quiet: true }); } catch (e) { /* the email still goes */ }
-      const href = `mailto:${encodeURIComponent(CONFIG.MGA.submitEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      const a = el("a", { href, style: "display:none" }); document.body.append(a); a.click(); setTimeout(() => a.remove(), 1000);
-      r.status = "submitted"; r.submitted = Date.now(); r.by = this.role.user; r.submissionId = "EMAIL-" + new Date().toISOString().slice(0, 16).replace(/[-:T]/g, ""); r.receiptTo = ""; r.source = "email";
+      const m = this.emailFor(r);
+      try { await this.exportXlsx({ rows: [{ ...r, status: "submitted", submissionId: m.id }], name: `MGA_report_${r.holder}_${r.period}_${r.rn || "unregistered"}.xlsx`, quiet: true, lodgement: true }); } catch (e) { /* the email still goes; the file can be downloaded again from the form */ }
+      const a = el("a", { href: m.href, style: "display:none" }); document.body.append(a); a.click(); setTimeout(() => a.remove(), 1000);
+      r.status = "email-pending"; r.emailOpened = Date.now(); r.submitted = null; r.by = this.role.user; r.submissionId = m.id; r.receiptTo = ""; r.source = "email";
       await this.store.save(r, this.role);
-      Toast.ok(`Your email program has opened a message to ${CONFIG.MGA.submitEmail}. Attach the downloaded Excel file and send it. The report is marked as submitted by email.`, { ms: 12000 });
-      return true;
+      if (this.rec && this.rec.id === r.id) { this.rec = r; this.readOnly = true; }
+      await this.confirmEmail(r); return true;   // the report has left the draft state either way (sent, or awaiting confirmation)
     },
-    amend() { const r = this.rec; r.status = "amended"; r.amendedFrom = r.submitted; r.replacesSubmissionId = r.submissionId || null; r.submitted = null; this.readOnly = false; this.renderForm(); Toast.info("The report is open for amendment. Submit it again when done; OGIA keeps the latest submission for each bore and period."); },
+    /* The browser cannot tell whether a mail program opened or the message was sent, so the report waits as "email not confirmed" until the officer says so. */
+    confirmEmail(r) {
+      return new Promise((resolve) => {
+        const bg = el("div", { class: "modal-bg", "data-testid": "mga-email-confirm" }), m = this.emailFor(r);
+        const done = async (sent) => { bg.remove(); if (sent) await this.markEmailSent(r); resolve(sent); };
+        bg.append(el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, el("h3", null, "Did your email program open?"),
+          el("p", { class: "prose" }, `It should show a new message to ${m.to} with the subject "${m.subject}". Attach the Excel file that was just downloaded and send it.`),
+          el("p", { class: "prose" }, "The report stays marked as not confirmed until you say the email has gone; you can confirm later from the report."),
+          el("div", { style: "display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap" },
+            el("button", { class: "btn", type: "button", "data-testid": "mga-email-later", onclick: () => done(false) }, "I will send it later"),
+            el("button", { class: "btn", type: "button", "data-testid": "mga-email-text", onclick: () => { bg.remove(); this.showEmailText(r).then(resolve); } }, "Nothing opened: show the email text"),
+            el("button", { class: "btn primary", type: "button", "data-testid": "mga-email-sent", onclick: () => done(true) }, "I have sent the email"))));
+        document.body.append(bg);
+      });
+    },
+    async markEmailSent(r) {
+      r.status = "submitted"; r.submitted = Date.now(); r.by = this.role.user; r.source = "email";
+      try { await this.store.save(r, this.role); } catch (e) { Toast.err("Could not record the email: " + ((e && e.message) || e)); return; }
+      if (this.rec && this.rec.id === r.id) { this.rec = JSON.parse(JSON.stringify(r)); this.readOnly = true; }
+      Toast.ok(`Recorded as sent by email to ${CONFIG.MGA.submitEmail} (reference ${r.submissionId}). Keep the sent email as your proof of lodgement.`, { ms: 9000 });
+      if (this.view === "form" && this.rec) this.renderForm(); else this.renderList();
+    },
+    showEmailText(r) {
+      return new Promise((resolve) => {
+        const m = this.emailFor(r), text = `To: ${m.to}\nSubject: ${m.subject}\n\n${m.full}`;
+        const ta = el("textarea", { class: "input", readonly: true, "data-testid": "mga-email-textarea", style: "min-height:180px;font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre" }, text);
+        const bg = el("div", { class: "modal-bg", "data-testid": "mga-email-text-modal" });
+        const copy = el("button", { class: "btn", type: "button", "data-testid": "mga-email-copy", onclick: async () => { try { await navigator.clipboard.writeText(text); Toast.ok("Email text copied. Paste it into a new message, attach the Excel file and send."); } catch (e) { ta.focus(); ta.select(); Toast.warn("Select the text and copy it with Ctrl+C."); } } }, "Copy the email text");
+        bg.append(el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, el("h3", null, "Send the report by email yourself"),
+          el("p", { class: "prose" }, "Create a new email to ", el("b", null, m.to), ", paste the text below (keep the subject line and the coded block, which lets OGIA file the report automatically), attach the Excel file that was downloaded, and send."), ta,
+          el("div", { style: "display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:10px" },
+            el("button", { class: "btn", type: "button", "data-testid": "mga-email-xlsx", onclick: () => this.exportXlsx({ rows: [{ ...r, status: "submitted", submissionId: m.id }], name: `MGA_report_${r.holder}_${r.period}_${r.rn || "unregistered"}.xlsx`, lodgement: true }).catch(() => {}) }, "Download the Excel file again"), copy,
+            el("button", { class: "btn", type: "button", onclick: () => { bg.remove(); resolve(false); } }, "Close"),
+            el("button", { class: "btn primary", type: "button", "data-testid": "mga-email-sent-text", onclick: async () => { bg.remove(); await this.markEmailSent(r); resolve(true); } }, "I have sent the email"))));
+        document.body.append(bg);
+      });
+    },
+    amend() { const r = this.rec; r.status = "amended"; r.amendedFrom = r.submitted || r.emailOpened || Date.now(); r.replacesSubmissionId = r.submissionId || null; r.submissionId = ""; r.submitted = null; r.emailOpened = null; r.clientRef = MGA.newRef(); this.readOnly = false; this.renderForm(); Toast.info("The report is open for amendment. Submit it again when done; OGIA keeps the latest submission for each bore and period."); },
     async withdraw() { const r = this.rec; if (!r || r.status === "submitted") return; if (!confirm("Withdraw this report? It stays on record as withdrawn and is hidden from the list.")) return; r.status = "withdrawn"; try { await this.store.save(r, this.role); Toast.ok("Report withdrawn."); this.backToList(); } catch (e) { r.status = "draft"; Toast.err("Could not withdraw: " + ((e && e.message) || e)); } },
     /* ---------- exports ---------- */
     exportRows() { const rows = this.rows.length ? this.rows : []; return rows; },
@@ -2467,15 +2557,18 @@
       });
       return this.xlsxLoading;
     },
-    async exportXlsx({ rows, name, quiet } = {}) {
+    async exportXlsx({ rows, name, quiet, lodgement } = {}) {
       rows = rows || this.exportRows(); if (!rows.length) { Toast.warn("Nothing to export for this period."); return; }
       try {
         setBusy("xlsx", true); await this.loadXlsx();
-        const wb = XLSX.utils.book_new();
-        const data = rows.map(r => MGA.toRow(r)); const ws = XLSX.utils.json_to_sheet(data, { header: MGA.COLUMNS });
-        ws["!cols"] = MGA.COLUMNS.map(c => ({ wch: c === "Comments" ? 60 : Math.max(14, c.length + 2) }));
+        const wb = XLSX.utils.book_new(), a = this.access || {}, demo = this.mode() === "demo";
+        const cols = lodgement ? [...MGA.COLUMNS, "ClientRef", "Submitted by", "Submitter name", "Replaces submission", "Source"] : MGA.COLUMNS;   // a lodgement file matches OGIA's register one to one so a row can be pasted
+        const data = rows.map(r => lodgement ? { ...MGA.toRow(r), "ClientRef": r.clientRef || "", "Submitted by": a.email || "", "Submitter name": a.name || "", "Replaces submission": r.replacesSubmissionId || "", "Source": "Email" } : MGA.toRow(r));
+        const ws = XLSX.utils.json_to_sheet(data, { header: cols });
+        ws["!cols"] = cols.map(c => ({ wch: c === "Comments" ? 60 : Math.max(14, c.length + 2) }));
         XLSX.utils.book_append_sheet(wb, ws, "MGA data");
-        const readme = XLSX.utils.aoa_to_sheet([["Annual Make Good Agreement Reporting (Water Act 2000, s437B)"], [`Exported ${M.fmtDate(new Date())} from the OGIA Bore Search Tool, reporting period ${this.period} (${MGA.periodByKey(this.period).label}).`], ["Reports must not include any monetary amounts paid, or proposed to be paid, to the bore owner."], [`Submit to: ${CONFIG.MGA.submitEmail}`]]);
+        const readme = XLSX.utils.aoa_to_sheet([...(demo ? [["DEMONSTRATION DATA: fictitious statuses for illustration only. Do not send to OGIA."]] : []), ["Annual Make Good Agreement Reporting (Water Act 2000, s437B)"], [`Exported ${M.fmtDate(new Date())} from the OGIA Bore Search Tool, reporting period ${this.period} (${MGA.periodByKey(this.period).label}).`], ["Reports must not include any monetary amounts paid, or proposed to be paid, to the bore owner."],
+          ...(demo ? [] : lodgement ? [["Lodged by email because the submission service could not be reached. OGIA: if the email's coded block was not filed automatically, paste this row into the MGA data table of the master register (Source = Email)."]] : [[`Submit to: ${CONFIG.MGA.submitEmail}`]])]);
         XLSX.utils.book_append_sheet(wb, readme, "READ ME");
         const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         download(name || this.fileName("xlsx"), new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
