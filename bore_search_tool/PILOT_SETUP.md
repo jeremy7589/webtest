@@ -1,5 +1,20 @@
 # MGA reporting pilot: run the whole chain in your own Microsoft environment
 
+## The 5-minute version (do this first)
+
+The page as shipped needs no Microsoft setup at all. It is in **email mode**: an officer picks their company, enters their work email, fills in the report and clicks "Send by email". Their own email program opens a message to Jeremy.Wolff@dlgwv.qld.gov.au with the report in the body and a coded copy of the row, and the report downloads as an Excel file in OGIA's template layout for them to attach. You receive real emails with real attachments; nothing else exists yet.
+
+1. On GitHub, repository `jeremy7589/webtest`, branch `main`: Add file, Create new file, name it `bore_search_tool/index.html`, paste the whole of `index.html` exactly as delivered, Commit changes. (Publish only this file.)
+2. Wait a few minutes, then open https://jeremy7589.github.io/webtest/bore_search_tool/ in Edge or Chrome. The tab title starts with "[PILOT]".
+3. Click the MGA button, choose Arrow Energy, enter your own work email and name, Continue. Open a bore from the map and choose "Report on this bore", or click New report; fill in the four sections; click "Send by email", tick the confirmation, click "Send by email" again.
+4. Outlook opens with the message addressed to you and the Excel file lands in your Downloads: attach it, send. Back in the page click "I have sent the email". The report is now marked as sent, and the email with the attachment is in your inbox.
+
+That is the demo: the guided form, the checks (try typing a dollar amount in the comments), the Excel row in OGIA's template, and a real lodgement arriving in a mailbox. What it does not do yet: check access codes, file the row into a register automatically, or send receipts. Those are the flow and register below, which take about 45 minutes once you have approval, and switch on by replacing the word `email` in `CONFIG.MGA.endpoint` with the flow's address. Everything an officer did in email mode stays valid: the same page, the same reports.
+
+Two things to say to your manager honestly: in email mode the sender's address is the only identity check (the access code needs the flow), and the register is your inbox until the flow files the rows for you.
+
+## The full version
+
 This gets the Bore Search Tool's MGA module working end to end (page, flow, Excel register, receipt email) using only things you control: a Power Automate environment that belongs to you, a workbook in your own OneDrive, your own mailbox (Jeremy.Wolff@dlgwv.qld.gov.au) and your personal GitHub Pages site. Nothing touches OGIA's mailbox, OneDrive or Power Platform environment, so you can demonstrate it to your manager first and hand the production version (`MGA_SETUP.md`) to OGIA afterwards.
 
 Time: about 45 minutes, most of it waiting for sign-ups and uploads. Everything below uses the `power_automate/pilot` folder.

@@ -559,7 +559,7 @@
      LIVE MODE: set endpoint to the URL of the Power Automate flow "When an HTTP request is received" (see MGA_SETUP.md).
      The flow checks the company's access code, appends the row to OGIA's master workbook on OneDrive or SharePoint and emails a receipt. */
   CONFIG.MGA = {
-    endpoint: "",                                        // Power Automate HTTP POST URL (keep the whole URL including the sig parameter); empty = demo mode
+    endpoint: "email",                                   // "email" = reports are lodged by email to submitEmail from the officer's own mail program (no Microsoft setup needed); a Power Automate HTTP POST URL (whole URL including sig) = filed by the flow; "" = demonstration mode, nothing is sent
     submitEmail: "Jeremy.Wolff@dlgwv.qld.gov.au",        // PILOT: receipts, copies and email lodgements go here. At go-live change to OGIA.UWIR@dlgwv.qld.gov.au (OGIA's reporting mailbox from the template's READ ME sheet)
     emailFallback: true,                                 // when the flow cannot be reached, offer to send the report by email instead
     tenureUrl: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/petroleum_replace_WFL1/FeatureServer/0",   // UWIR 2025 tenure with Responsible_tenure_Holder
@@ -988,7 +988,7 @@
     b.append(dl2, el("h3", null, "Keyboard"),
       el("p", null, el("kbd", null, "/"), " focus the RN search · ", el("kbd", null, "?"), " open help · ", el("kbd", null, "Esc"), " close popovers, panels and the chart"),
       el("h3", null, "Make good agreement reporting (tenure holders)"),
-      el("p", null, "Section 437B of the Water Act 2000 requires responsible tenure holders with make good obligations for a water bore to lodge an annual report with OGIA by 31 October, covering 1 October to 30 September. The MGA reporting button opens the form: one report per bore, with the bore assessment status and outcome, the make good agreement status, the agreed measures, decommissioning, and a progress update. Reports must not include any monetary amount paid or proposed to be paid to the bore owner. Company staff sign in with the access code OGIA issued to their company and their work email; " + (!CONFIG.MGA.endpoint ? "this copy runs in demonstration mode: nothing is sent to OGIA and the reports shown are fictitious." : CONFIG.MGA.pilot ? "this copy is a PILOT: submissions go to a test register and the pilot mailbox (" + CONFIG.MGA.submitEmail + "), not to OGIA, and do not count as lodgement." : "each submission goes straight to OGIA's reporting mailbox and master register, and the sender receives a receipt.")),
+      el("p", null, "Section 437B of the Water Act 2000 requires responsible tenure holders with make good obligations for a water bore to lodge an annual report with OGIA by 31 October, covering 1 October to 30 September. The MGA reporting button opens the form: one report per bore, with the bore assessment status and outcome, the make good agreement status, the agreed measures, decommissioning, and a progress update. Reports must not include any monetary amount paid or proposed to be paid to the bore owner. Company staff sign in with " + (CONFIG.MGA.endpoint === "email" ? "their company and their work email; " : "the access code OGIA issued to their company and their work email; ") + (!CONFIG.MGA.endpoint ? "this copy runs in demonstration mode: nothing is sent to OGIA and the reports shown are fictitious." : CONFIG.MGA.endpoint === "email" ? "this copy lodges each report by email from the officer's own mail program to " + CONFIG.MGA.submitEmail + ", with the Excel row attached" + (CONFIG.MGA.pilot ? " (a pilot mailbox: not a lodgement with OGIA)." : ".") : CONFIG.MGA.pilot ? "this copy is a PILOT: submissions go to a test register and the pilot mailbox (" + CONFIG.MGA.submitEmail + "), not to OGIA, and do not count as lodgement." : "each submission goes straight to OGIA's reporting mailbox and master register, and the sender receives a receipt.")),
       el("h3", null, "About the data"),
       el("p", null, `Bore assessment data and prediction timeseries are published by OGIA as ArcGIS feature services (data release: ${CONFIG.DATA_VINTAGE}). Timeseries values are whole metres of predicted drawdown at monthly steps to 2025, quarterly to about 2070 and coarser after that. Rows dated beyond the year 2999 are model placeholders and are not shown.`),
       el("p", null, TEXT.trigger));
@@ -2137,7 +2137,7 @@
   }
   const Mga = {
     store: null, role: null, period: null, view: "list", rec: null, readOnly: false, touched: false, rows: [], holderFilter: "", autosaveTimer: null, savedAt: null, xlsxLoading: null,
-    mode() { return CONFIG.MGA.endpoint ? "live" : "demo"; },
+    mode() { return CONFIG.MGA.endpoint === "email" ? "email" : CONFIG.MGA.endpoint ? "live" : "demo"; },   // email: lodged from the officer's mail program; live: filed by OGIA's flow; demo: nothing sent
     /* Destination wording: a pilot copy must never describe itself as OGIA's register or mailbox. */
     mailboxText() { return CONFIG.MGA.pilot ? `the pilot mailbox (${CONFIG.MGA.submitEmail}), not OGIA` : `OGIA's reporting mailbox (${CONFIG.MGA.submitEmail})`; },
     registerText() { return CONFIG.MGA.pilot ? "the pilot test register" : "OGIA's master register"; },
@@ -2149,7 +2149,7 @@
       this.store = makeLocalStore({ key: demo ? "ogia.bst.mga.demo.v1" : "ogia.bst.mga.live.v1", seeded: demo });
       this.role = this.store.getRole();
       if (this.role && this.role.kind === "holder" && this.role.demo !== demo) this.role = null;   // never carry a demo role into live mode
-      this.access = (this.role && this.role.kind === "holder" && this.role.access && this.role.access.code) ? this.role.access : null;   // the code and email travel with the role for the tab's life
+      this.access = (this.role && this.role.kind === "holder" && this.role.access && (this.role.access.code || this.mode() === "email")) ? this.role.access : null;   // the code and email travel with the role for the tab's life (email mode has no code)
       if (!demo && this.role && !this.access) this.role = null;   // a live role without its code cannot submit: ask to sign in again
       this.initialising = false;
     },
@@ -2157,7 +2157,7 @@
       await this.init();
       this.el.sheet.hidden = false; D.sheetBg.classList.add("open"); requestAnimationFrame(() => this.el.sheet.classList.add("open"));
       if (this.mode() === "demo" && !/^\[DEMO\]/.test(document.title)) document.title = "[DEMO] " + document.title;
-      if (this.mode() === "live" && CONFIG.MGA.pilot && !/^\[PILOT\]/.test(document.title)) document.title = "[PILOT] " + document.title;
+      if (this.mode() !== "demo" && CONFIG.MGA.pilot && !/^\[PILOT\]/.test(document.title)) document.title = "[PILOT] " + document.title;
       this.urlOpen = true; Url.sync({ push: false });
       if (opts.rn && this.role && this.role.kind === "holder") await this.newFor(opts.rn); else await this.render();
       this.el.close.focus();
@@ -2177,6 +2177,11 @@
       const err = (m) => { const e = this.el.body.querySelector("[data-testid=mga-access-error]"); if (e) { e.textContent = m; e.hidden = false; } };
       if (!CONFIG.MGA.holders.includes(holder)) return err("Choose your company.");
       if (!/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(email || "")) return err("Enter your work email address; the receipt is sent there.");
+      if (this.mode() === "email") {   // no flow to check a code against: the company and the sender's address are the record
+        this.access = { holder, code: "", email: email.trim().toLowerCase(), name: (name || "").trim() };
+        this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access, lodge: "email" };
+        this.store.setRole(this.role); this.view = "list"; if (S.bore) renderCard(S.bore); this.render(); return;
+      }
       if (!(code || "").trim()) return err("Enter the access code OGIA issued to your company.");
       this.access = { holder, code: code.trim().toUpperCase(), email: email.trim().toLowerCase(), name: (name || "").trim() };   // codes are issued in upper case; phones often lower-case the first letter
       try {
@@ -2222,8 +2227,9 @@
         bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-reset-demo", onclick: () => { this.store.reset(); Toast.ok("Demo data reset."); this.view = "list"; this.render(); } }, "Reset demo data"));
       } else {
         bn.className = "mga-banner live";
-        if (CONFIG.MGA.pilot) bn.append(el("span", { class: "rstat draft", "data-testid": "mga-pilot" }, "PILOT: test register, nothing here counts as lodgement with OGIA"));
-        bn.append(icon("info"), el("span", { "data-testid": "mga-role-name" }, this.role ? `Reporting as ${this.role.name}` + (this.role.offline ? " (service unavailable: email submission)" : "") : `Reports go to ${this.registerText()} and ${this.mailboxText()}`), el("span", { class: "spacer" }));
+        if (CONFIG.MGA.pilot) bn.append(el("span", { class: "rstat draft", "data-testid": "mga-pilot" }, "PILOT: nothing here counts as lodgement with OGIA"));
+        const idle = this.mode() === "email" ? `Reports are lodged by email to ${CONFIG.MGA.submitEmail}, with the Excel row attached` : `Reports go to ${this.registerText()} and ${this.mailboxText()}`;
+        bn.append(icon("info"), el("span", { "data-testid": "mga-role-name" }, this.role ? `Reporting as ${this.role.name}` + (this.role.offline ? " (service unavailable: email submission)" : "") : idle), el("span", { class: "spacer" }));
         if (this.role && this.role.offline) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-retry", onclick: () => this.reverify(true) }, "Retry connection"));
         if (this.role) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-signout", onclick: () => this.signOut() }, "Sign out"));
       }
@@ -2245,7 +2251,8 @@
       const emailInp = el("input", { class: "input", id: "mgaAccEmail", type: "email", autocomplete: "email", "data-testid": "mga-acc-email", placeholder: "you@company.com.au" });
       const nameInp = el("input", { class: "input", id: "mgaAccName", type: "text", autocomplete: "name", "data-testid": "mga-acc-name", placeholder: "Optional" });
       const errBox = el("div", { class: "ferr", "data-testid": "mga-access-error", role: "alert", hidden: true });
-      form.append(this.field("Company (responsible tenure holder)", holderSel, { id: "accHolder" }), this.field("Access code", codeInp, { id: "accCode", help: `One code per company. Ask ${CONFIG.MGA.submitEmail} if you do not have it.` }), this.field("Your work email", emailInp, { id: "accEmail", help: `The receipt for each submission is sent to this address, with a copy to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}.` }), this.field("Your name", nameInp, { id: "accName" }), errBox,
+      const em = this.mode() === "email";
+      form.append(this.field("Company (responsible tenure holder)", holderSel, { id: "accHolder" }), em ? null : this.field("Access code", codeInp, { id: "accCode", help: `One code per company. Ask ${CONFIG.MGA.submitEmail} if you do not have it.` }), this.field("Your work email", emailInp, { id: "accEmail", help: em ? `Each report is sent from your own email program to ${CONFIG.MGA.submitEmail}; your sent email is your record.` : `The receipt for each submission is sent to this address, with a copy to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}.` }), this.field("Your name", nameInp, { id: "accName" }), errBox,
         el("div", { style: "display:flex;gap:8px;align-items:center" }, el("button", { class: "btn primary", type: "submit", "data-testid": "mga-acc-continue" }, "Continue"), el("span", { class: "help", style: "margin:0" }, `Saved only for this tab; your email and name are sent with each report and kept in ${this.registerText()}.`)));
       form.addEventListener("submit", (e) => { e.preventDefault(); this.signIn({ holder: holderSel.value, code: codeInp.value, email: emailInp.value, name: nameInp.value }); });
       b.append(form);
@@ -2281,7 +2288,7 @@
         el("p", null, el("b", null, "No make good agreement in place: "), "an update on the actions taken to negotiate and enter into the agreement, progress toward meeting the obligations, and any engagement or negotiation activities during the period."),
         el("p", null, el("b", null, "Agreement executed: "), "the make good measures agreed for the bore, a progress update on their implementation, actions completed during the period and the status of ongoing activities."),
         el("p", null, el("b", null, "Must not be reported: "), "any monetary amount paid or proposed to be paid to the bore owner (compensation, settlement, reimbursement or any other financial consideration). The form blocks amounts in the comments."),
-        el("p", { class: "help" }, this.mode() === "demo" ? `In production each submission goes to OGIA's reporting mailbox${CONFIG.MGA.pilot ? "" : ` (${CONFIG.MGA.submitEmail})`} and master register, and the sender receives an emailed receipt. The Excel export reproduces OGIA's reporting template.` : `Each submission goes to ${this.registerText()} and ${this.mailboxText()}, and you receive an emailed receipt with a reference number. ${CONFIG.MGA.pilot ? "Pilot submissions are not lodgements with OGIA." : "Keep that email as your proof of lodgement."} The Excel export reproduces OGIA's reporting template for your own records.`))));
+        el("p", { class: "help" }, this.mode() === "demo" ? `In production each submission goes to OGIA's reporting mailbox${CONFIG.MGA.pilot ? "" : ` (${CONFIG.MGA.submitEmail})`} and master register, and the sender receives an emailed receipt. The Excel export reproduces OGIA's reporting template.` : this.mode() === "email" ? `Each submission is sent by email from your own mail program to ${CONFIG.MGA.submitEmail}, with the report attached as an Excel file in OGIA's template layout. ${CONFIG.MGA.pilot ? "Pilot: these emails are not lodgements with OGIA." : "Keep the sent email as your proof of lodgement."}` : `Each submission goes to ${this.registerText()} and ${this.mailboxText()}, and you receive an emailed receipt with a reference number. ${CONFIG.MGA.pilot ? "Pilot submissions are not lodgements with OGIA." : "Keep that email as your proof of lodgement."} The Excel export reproduces OGIA's reporting template for your own records.`))));
     },
     renderRows() {
       const list = this.listEl; if (!list) return; list.textContent = "";
@@ -2388,7 +2395,7 @@
       /* Footer */
       const foot = el("div", { class: "mga-foot" });
       if (!ro) {
-        foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-save", onclick: () => this.save({}) }, "Save draft"), el("button", { class: "btn primary", type: "submit", "data-testid": "mga-submit" }, CONFIG.MGA.pilot && this.mode() === "live" ? "Submit (pilot)" : "Submit to OGIA"));
+        foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-save", onclick: () => this.save({}) }, "Save draft"), el("button", { class: "btn primary", type: "submit", "data-testid": "mga-submit" }, this.mode() === "email" ? "Send by email" : CONFIG.MGA.pilot && this.mode() === "live" ? "Submit (pilot)" : "Submit to OGIA"));
         if (r.amendBackup) foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-discard", onclick: () => this.discardAmendment() }, "Discard amendment"));
         else if (r.created && !r.replacesSubmissionId) foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-withdraw", onclick: () => this.withdraw() }, "Withdraw"));
       }
@@ -2437,10 +2444,11 @@
       const dl = el("dl"); MGA.COLUMNS.filter(c => !["Report status"].includes(c)).forEach(c => dl.append(el("dt", null, c), el("dd", null, String(row[c] === "" ? "—" : row[c]))));
       const chk = el("input", { type: "checkbox", "data-testid": "mga-confirm-check" });
       const modalBg = el("div", { class: "modal-bg", "data-testid": "mga-confirm" });
-      const live = this.mode() === "live";
-      const btnOk = el("button", { class: "btn primary", type: "button", "data-testid": "mga-confirm-submit", disabled: true, onclick: async () => { btnOk.disabled = true; btnOk.textContent = "Sending…"; const ok = await this.send(r); modalBg.remove(); if (ok) this.backToList(); } }, live ? (CONFIG.MGA.pilot ? "Submit (pilot)" : "Submit to OGIA") : "Submit (demo)");
+      const live = this.mode() === "live", em = this.mode() === "email";
+      const btnOk = el("button", { class: "btn primary", type: "button", "data-testid": "mga-confirm-submit", disabled: true, onclick: async () => { btnOk.disabled = true; btnOk.textContent = "Sending…"; const ok = await this.send(r); modalBg.remove(); if (ok) this.backToList(); } }, live ? (CONFIG.MGA.pilot ? "Submit (pilot)" : "Submit to OGIA") : em ? "Send by email" : "Submit (demo)");
       chk.addEventListener("change", () => { btnOk.disabled = !chk.checked; });
       modalBg.append(el("div", { class: "modal mga-summary", role: "dialog", "aria-modal": "true" }, el("h3", null, `Submit the ${r.period} report for ${r.rn ? "RN " + r.rn : r.boreName}?`),
+        em ? el("div", { class: "mga-note" }, `Your email program will open a message to ${CONFIG.MGA.submitEmail} with this report, and the report downloads as an Excel file: attach it, then send. ${CONFIG.MGA.pilot ? "Pilot: this is not a lodgement with OGIA." : "Your sent email is your record of lodgement."}`) : null,
         live ? el("div", { class: "mga-note" }, this.role.offline ? `OGIA's submission service was unavailable when you signed in. The page will try it again now and, if it is still down, offer to send the report by email to ${CONFIG.MGA.submitEmail}.` : `The report goes to ${this.registerText()} and ${this.mailboxText()}. A receipt is emailed to ${this.access ? this.access.email : "you"}.`) : null,
         early ? el("div", { class: "fwarn", style: "margin-bottom:8px", "data-testid": "mga-early" }, `Period ${per.key} has not ended yet (30 Sep ${per.endYear}). In production, submission opens on 1 October; the demo lets you continue.`) : null,
         v.warnings.length ? el("div", { class: "fwarn", style: "margin-bottom:8px" }, "Before you submit: " + v.warnings.map(w => w.msg).join(" ")) : null, dl,
@@ -2455,6 +2463,7 @@
         markSubmitted({ submissionId: `DEMO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(Math.floor(Math.random() * 90000) + 10000)}`, receiptTo: this.role.user }, "demo");
         await this.store.save(r, this.role); Toast.ok(`Report submitted (demo). Receipt ${r.submissionId} stored in this browser only.`, { ms: 7000 }); return true;
       }
+      if (this.mode() === "email") { MGA.refFor(r); return await this.sendByEmail(r); }
       if (!this.access || !this.access.code) { Toast.err("Your sign-in details are no longer available in this tab. Sign in again, then submit.", { ms: 9000 }); this.signOut(); return false; }
       MGA.refFor(r);
       if (this.role.offline && !(await this.reverify(false))) { if (!this.role) return false; return await this.offerEmail(r, "OGIA's submission service is still unavailable.", "network"); }
@@ -2492,7 +2501,7 @@
     emailFor(r) {
       const a = this.access || {}, ref = MGA.refFor(r), id = "EMAIL-" + ref, row = MGA.toRow({ ...r, status: "submitted", submissionId: id });
       const subject = `MGA lodgement by email ${r.period}: ${r.rn ? "RN " + r.rn : (r.boreName || "unregistered bore")} [${MGA.holderName(r.holder)}] ${id}`;
-      const human = ["Make good agreement annual report (Water Act 2000, s437B), lodged by email because the Bore Search Tool could not reach OGIA's submission service.", "",
+      const human = [this.mode() === "email" ? "Make good agreement annual report (Water Act 2000, s437B), lodged by email from the Bore Search Tool." : "Make good agreement annual report (Water Act 2000, s437B), lodged by email because the Bore Search Tool could not reach OGIA's submission service.", "",
         `Reference: ${id}`, `Tenure holder: ${row["Tenure Holder"]}`, `Reporting period: ${r.period}`, `Bore: ${r.rn ? "RN " + r.rn : "unregistered"}${r.boreName ? " " + r.boreName : ""}`,
         `Bore assessment: ${row["Bore assessment status"] || "-"}${row["Bore assessment outcome"] ? " / " + row["Bore assessment outcome"] : ""}`, `MGA status: ${row["MGA status"] || "-"}`, `Make good measures: ${row["Make good measure type"] || "-"}`,
         `Replaces submission: ${r.replacesSubmissionId || "-"}`, `Submitted by: ${a.name ? a.name + ", " : ""}${a.email || ""}`, "",
@@ -2597,7 +2606,7 @@
         ws["!cols"] = cols.map(c => ({ wch: c === "Comments" ? 60 : Math.max(14, c.length + 2) }));
         XLSX.utils.book_append_sheet(wb, ws, "MGA data");
         const readme = XLSX.utils.aoa_to_sheet([...(demo ? [["DEMONSTRATION DATA: fictitious statuses for illustration only. Do not send to OGIA."]] : []), ["Annual Make Good Agreement Reporting (Water Act 2000, s437B)"], [`Exported ${M.fmtDate(new Date())} from the OGIA Bore Search Tool, reporting period ${this.period} (${MGA.periodByKey(this.period).label}).`], ["Reports must not include any monetary amounts paid, or proposed to be paid, to the bore owner."],
-          ...(demo ? [] : lodgement ? [["Lodged by email because the submission service could not be reached. OGIA: if the email's coded block was not filed automatically, paste this row into the MGA data table of the master register (Source = Email)."]] : [[`Submit to: ${CONFIG.MGA.submitEmail}`]])]);
+          ...(demo ? [] : lodgement ? [[(this.mode() === "email" ? "Lodged by email from the Bore Search Tool." : "Lodged by email because the submission service could not be reached.") + " OGIA: if the email's coded block was not filed automatically, paste this row into the MGA data table of the master register (Source = Email)."]] : [[`Submit to: ${CONFIG.MGA.submitEmail}`]])]);
         XLSX.utils.book_append_sheet(wb, readme, "READ ME");
         const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
         download(name || this.fileName("xlsx"), new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
