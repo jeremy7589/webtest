@@ -205,7 +205,13 @@
               },
               {
                 "equals": [
-                  "@endsWith(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), toLower(string(coalesce(outputs('Holder_row')?['EmailDomain'], '#none'))))",
+                  "@and(equals(length(split(string(coalesce(triggerOutputs()?['body/from'], '')), '@')), 2), not(contains(string(coalesce(triggerOutputs()?['body/from'], '')), ';')), not(contains(string(coalesce(triggerOutputs()?['body/from'], '')), ',')), not(contains(string(coalesce(triggerOutputs()?['body/from'], '')), ' ')), less(length(string(coalesce(triggerOutputs()?['body/from'], ''))), 255))",
+                  true
+                ]
+              },
+              {
+                "equals": [
+                  "@equals(toLower(last(split(string(coalesce(triggerOutputs()?['body/from'], '')), '@'))), toLower(replace(string(coalesce(outputs('Holder_row')?['EmailDomain'], '#none')), '@', '')))",
                   true
                 ]
               }
@@ -336,7 +342,7 @@
                   "parameters": {
                     "emailMessage/To": "Jeremy.Wolff@dlgwv.qld.gov.au",
                     "emailMessage/Subject": "ACTION needed: emailed make good report from an unverified sender",
-                    "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} carries a make good report block for holder code \"@{body('Parse_block')?['h']}\", but the sender's domain does not match that company's EmailDomain in the Tenure holders sheet (or the company is inactive or unknown). Nothing was filed. Check with the company before entering the attached file by hand.</p>",
+                    "emailMessage/Body": "<p>An email with the subject \"@{replace(replace(replace(string(coalesce(triggerOutputs()?['body/subject'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')}\" from @{replace(replace(replace(string(coalesce(triggerOutputs()?['body/from'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')} carries a make good report block for holder code \"@{body('Parse_block')?['h']}\", but the sender's domain does not match that company's EmailDomain in the Tenure holders sheet (or the company is inactive or unknown). Nothing was filed. Check with the company before entering the attached file by hand.</p>",
                     "emailMessage/Importance": "High"
                   }
                 },
@@ -380,7 +386,7 @@
               "parameters": {
                 "emailMessage/To": "Jeremy.Wolff@dlgwv.qld.gov.au",
                 "emailMessage/Subject": "ACTION needed: emailed make good report needs manual entry",
-                "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} has no machine-readable block (long comments, or the text was pasted by hand). Open the attached Excel file and paste its row into the MGA data table of the master register (Source = Manual, copy ClientRef from the file). The email has been flagged in your Inbox.</p>",
+                "emailMessage/Body": "<p>An email with the subject \"@{replace(replace(replace(string(coalesce(triggerOutputs()?['body/subject'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')}\" from @{replace(replace(replace(string(coalesce(triggerOutputs()?['body/from'], '')), '&', '&amp;'), '<', '&lt;'), '>', '&gt;')} has no machine-readable block (long comments, or the text was pasted by hand). Open the attached Excel file and paste its row into the MGA data table of the master register (Source = Manual, copy ClientRef from the file). The email has been flagged in your Inbox.</p>",
                 "emailMessage/Importance": "High"
               }
             },
