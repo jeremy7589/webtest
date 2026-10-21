@@ -46,14 +46,24 @@
           "apiId": "/providers/Microsoft.PowerApps/apis/shared_conversionservice"
         },
         "parameters": {
-          "request/html": "@triggerOutputs()?['body/body']"
+          "request/html": "@if(equals(triggerOutputs()?['body/isHtml'], true), triggerOutputs()?['body/body'], replace(replace(string(coalesce(triggerOutputs()?['body/body'], '')), '<', '&lt;'), '>', '&gt;'))"
         }
       },
-      "description": "Content Conversion: Html to text. Turns &lt;&lt;MGA-JSON&gt;&gt; back into <<MGA-JSON>> whatever the mail program did to the body."
+      "description": "Content Conversion: Html to text. For an HTML email it turns &lt;&lt;MGA-JSON&gt;&gt; back into <<MGA-JSON>>; a plain-text email is escaped first so the converter does not swallow the markers as tags."
+    },
+    "Text_compact": {
+      "runAfter": {
+        "Html_to_text": [
+          "Succeeded"
+        ]
+      },
+      "type": "Compose",
+      "inputs": "@replace(replace(replace(replace(string(coalesce(body('Html_to_text'), '')), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''), decodeUriComponent('%09'), ''), ' ', '')",
+      "description": "All whitespace removed: the converter breaks lines every 80 characters and mail programs wrap too, and either can split a marker or the base64 block. The markers contain no spaces, so they survive."
     },
     "Has_block": {
       "runAfter": {
-        "Html_to_text": [
+        "Text_compact": [
           "Succeeded"
         ]
       },
@@ -62,13 +72,13 @@
         "and": [
           {
             "greater": [
-              "@indexOf(body('Html_to_text'), '<<MGA-JSON>>')",
+              "@indexOf(outputs('Text_compact'), '<<MGA-JSON>>')",
               -1
             ]
           },
           {
             "greater": [
-              "@indexOf(body('Html_to_text'), '<</MGA-JSON>>')",
+              "@indexOf(outputs('Text_compact'), '<</MGA-JSON>>')",
               -1
             ]
           }
@@ -77,7 +87,7 @@
       "actions": {
         "Block": {
           "type": "Compose",
-          "inputs": "@substring(body('Html_to_text'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12), sub(indexOf(body('Html_to_text'), '<</MGA-JSON>>'), add(indexOf(body('Html_to_text'), '<<MGA-JSON>>'), 12)))",
+          "inputs": "@substring(outputs('Text_compact'), add(indexOf(outputs('Text_compact'), '<<MGA-JSON>>'), 12), sub(indexOf(outputs('Text_compact'), '<</MGA-JSON>>'), add(indexOf(outputs('Text_compact'), '<<MGA-JSON>>'), 12)))",
           "description": "The base64 text between the markers."
         },
         "Decoded": {
@@ -87,8 +97,8 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@base64ToString(replace(replace(replace(replace(outputs('Block'), decodeUriComponent('%0D'), ''), decodeUriComponent('%0A'), ''), decodeUriComponent('%09'), ''), ' ', ''))",
-          "description": "Line breaks, tabs and spaces inserted by mail programs are removed before decoding; base64 has none of its own, so nothing the submitter typed is altered."
+          "inputs": "@base64ToString(outputs('Block'))",
+          "description": "base64 carries no whitespace of its own, so nothing the submitter typed was altered by the compacting above."
         },
         "Parse_block": {
           "runAfter": {
@@ -376,7 +386,7 @@
               "parameters": {
                 "emailMessage/To": "OGIA.UWIR@dlgwv.qld.gov.au",
                 "emailMessage/Subject": "ACTION needed: emailed make good report needs manual entry",
-                "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} has no machine-readable block (long comments, or the text was pasted by hand). Open the attached Excel file and paste its row into the MGA data table of the master register (Source = Email). The email has been flagged in the OGIA.UWIR mailbox.</p>",
+                "emailMessage/Body": "<p>An email with the subject \"@{triggerOutputs()?['body/subject']}\" from @{triggerOutputs()?['body/from']} has no machine-readable block (long comments, or the text was pasted by hand). Open the attached Excel file and paste its row into the MGA data table of the master register (Source = Manual, copy ClientRef from the file). The email has been flagged in the OGIA.UWIR mailbox.</p>",
                 "emailMessage/Importance": "High"
               }
             },

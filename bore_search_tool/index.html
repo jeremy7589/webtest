@@ -2004,7 +2004,9 @@
     const COLUMNS = ["Tenure Holder", "RN", "Bore assessment status", "Bore assessment date", "Submitted to OGIA date", "Bore assessment outcome", "MGA status", "Agreement Date", "Make good measure type", "Decommission status", "Decommission date", "Comments", "Bore name", "Reporting period", "Report status", "Submission ID"];
     function periodFor(endYear) { return { key: `${endYear - 1}-${String(endYear).slice(2)}`, label: `1 Oct ${endYear - 1} to 30 Sep ${endYear}`, start: Date.UTC(endYear - 1, 9, 1), end: Date.UTC(endYear, 8, 30, 23, 59, 59), due: Date.UTC(endYear, 9, 31, 23, 59, 59), endYear }; }
     function currentPeriod(now) { const y = new Date(now).getUTCFullYear(); return now > periodFor(y).due ? periodFor(y + 1) : periodFor(y); }   // the period whose 31 October deadline is next
-    function periodOptions(now) { const cur = currentPeriod(now); const out = [periodFor(cur.endYear + 1)]; for (let i = 0; i < 3; i++) out.push(periodFor(cur.endYear - i)); return out; }
+    /* The period the sheet opens on: the period that has just ended stays the default for 90 days after its deadline (late lodgements are far more common in November than early drafts for the next year). */
+    function defaultPeriod(now) { const cur = currentPeriod(now), prev = periodFor(cur.endYear - 1); return (now > prev.due && now < prev.due + 90 * 86400000) ? prev : cur; }
+    function periodOptions(now) { const cur = currentPeriod(now); const out = [periodFor(cur.endYear + 1)]; for (let i = 0; i < 3; i++) out.push(periodFor(cur.endYear - i)); return out; }   // always contains defaultPeriod(now)
     const periodByKey = (key) => { const m = /^(\d{4})-(\d{2})$/.exec(key || ""); return m ? periodFor(+m[1] + 1) : null; };
     const isoOk = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || "") && !isNaN(Date.parse(s));
     const toDmy = (iso) => isoOk(iso) ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : "";
@@ -2060,7 +2062,7 @@
     const refFor = (r) => r.clientRef || (r.clientRef = newRef());
     const blank = (holder, period, rn) => ({ id: newId(), oid: null, holder, period, rn: rn ? String(rn) : "", boreName: "", assessStatus: "", assessDate: "", submittedDate: "", outcome: "", mgaStatus: "", agreementDate: "", measures: [], measureDetail: "", decomStatus: "", decomDate: "", comments: "", status: "draft", created: null, updated: null, submitted: null, emailOpened: null, amendedFrom: null, by: "", submissionId: "", receiptTo: "", source: "", replacesSubmissionId: null, clientRef: newRef() });
     const measureText = (r) => (r.measures || []).map(m => (m === "Other" || m === "Replacement bore") && (r.measureDetail || "").trim() ? `${m} (${r.measureDetail.trim()})` : m).join("; ");
-    return { HOLDERS, holderName, DOMAINS, DESC, COLUMNS, periodFor, currentPeriod, periodOptions, periodByKey, isoOk, toDmy, moneyHit, piiHit, executedStatus, validate, toRow, toCsv, blank, measureText, newRef, refFor };
+    return { HOLDERS, holderName, DOMAINS, DESC, COLUMNS, periodFor, currentPeriod, defaultPeriod, periodOptions, periodByKey, isoOk, toDmy, moneyHit, piiHit, executedStatus, validate, toRow, toCsv, blank, measureText, newRef, refFor };
   })();
 
   /* Demo seed: real Surat CMA bores with their OGIA-recorded make good status, assigned to the tenure holder whose UWIR 2025 tenure they sit in */
@@ -2138,7 +2140,7 @@
     el: { sheet: $("mgaSheet"), body: $("mgaBody"), banner: $("mgaBanner"), btn: $("btnMga"), close: $("btnMgaClose") },
     async init() {
       if (this.store !== null || this.initialising) return; this.initialising = true;
-      this.period = MGA.currentPeriod(Date.now()).key;
+      this.period = MGA.defaultPeriod(Date.now()).key;
       const demo = this.mode() === "demo";
       this.store = makeLocalStore({ key: demo ? "ogia.bst.mga.demo.v1" : "ogia.bst.mga.live.v1", seeded: demo });
       this.role = this.store.getRole();
@@ -2162,7 +2164,9 @@
     setDemoRole(role) { if (role) role.demo = true; this.role = role; this.store.setRole(role); this.view = "list"; this.rec = null; if (S.bore) renderCard(S.bore); this.render(); },
     payload(action, report) {
       const a = this.access || {};
-      return { action, holder: a.holder, accessCode: a.code, submitter: { email: a.email, name: a.name || "" }, period: this.period, report: report || null, app: { version: CONFIG.MGA.appVersion, url: location.origin + location.pathname, sentAt: new Date().toISOString() } };
+      const p = { action, holder: a.holder, accessCode: a.code, submitter: { email: a.email, name: a.name || "" }, period: this.period, app: { version: CONFIG.MGA.appVersion, url: location.origin + location.pathname, sentAt: new Date().toISOString() } };
+      if (report) p.report = report;   // a verify carries no report key at all, so a flow whose schema types report as an object still accepts it
+      return p;
     },
     async signIn({ holder, code, email, name }) {
       const err = (m) => { const e = this.el.body.querySelector("[data-testid=mga-access-error]"); if (e) { e.textContent = m; e.hidden = false; } };

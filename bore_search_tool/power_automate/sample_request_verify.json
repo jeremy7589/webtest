@@ -1,0 +1,16 @@
+{
+  "action": "verify",
+  "holder": "ARROW",
+  "accessCode": "ARW-XXXX-XXXX",
+  "period": "2025-26",
+  "submitter": {
+    "email": "jane.citizen@arrowenergy.com.au",
+    "name": "Test"
+  },
+  "report": null,
+  "app": {
+    "version": "3.1.0",
+    "url": "https://example.qld.gov.au/bore-search/",
+    "sentAt": "2026-10-20T12:00:00.000Z"
+  }
+}
