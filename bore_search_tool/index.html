@@ -2198,7 +2198,7 @@
       try {
         const res = await postFlow(this.payload("verify"));
         this.role = { ...this.role, offline: false, offlineWhy: null, name: `${res.holderName || MGA.holderName(this.access.holder)} · ${this.access.email}` };
-        this.store.setRole(this.role); this.renderBanner(); Toast.ok("OGIA's submission service is available again. Reports now go straight to OGIA.", { ms: 7000 }); return true;
+        this.store.setRole(this.role); this.renderBanner(); Toast.ok(`The submission service is available again. Reports now go straight to ${this.registerText()}.`, { ms: 7000 }); return true;
       } catch (e) {
         if (e.kind === "rejected") { Toast.err(e.message + " Please sign in again.", { ms: 9000 }); this.signOut(); return false; }
         if (manual) Toast.warn(e.message, { ms: 9000 });
@@ -2222,7 +2222,7 @@
         bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-reset-demo", onclick: () => { this.store.reset(); Toast.ok("Demo data reset."); this.view = "list"; this.render(); } }, "Reset demo data"));
       } else {
         bn.className = "mga-banner live";
-        if (CONFIG.MGA.pilot) bn.append(el("span", { class: "rstat amended", "data-testid": "mga-pilot" }, "PILOT: test register, nothing here counts as lodgement with OGIA"));
+        if (CONFIG.MGA.pilot) bn.append(el("span", { class: "rstat draft", "data-testid": "mga-pilot" }, "PILOT: test register, nothing here counts as lodgement with OGIA"));
         bn.append(icon("info"), el("span", { "data-testid": "mga-role-name" }, this.role ? `Reporting as ${this.role.name}` + (this.role.offline ? " (service unavailable: email submission)" : "") : `Reports go to ${this.registerText()} and ${this.mailboxText()}`), el("span", { class: "spacer" }));
         if (this.role && this.role.offline) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-retry", onclick: () => this.reverify(true) }, "Retry connection"));
         if (this.role) bn.append(el("button", { class: "chip btn-like", type: "button", "data-testid": "mga-signout", onclick: () => this.signOut() }, "Sign out"));
@@ -2341,9 +2341,9 @@
       const per = MGA.periodByKey(r.period) || MGA.currentPeriod(Date.now());
       const pending = r.status === "email-pending";
       b.append(el("div", { class: "mga-toolbar" }, el("button", { class: "btn small", type: "button", "data-testid": "mga-back", onclick: () => this.backToList() }, "‹ Back to list"), el("span", { class: "chip" }, `Period ${per.key}: ${per.label}`), el("span", { class: "chip" }, MGA.holderName(r.holder)), r.status === "submitted" ? el("span", { class: "rstat submitted", "data-testid": "mga-form-status" }, "Submitted " + (r.submitted ? M.fmtDate(r.submitted) : "")) : el("span", { class: "rstat " + (pending ? "amended" : r.status), "data-testid": "mga-form-status" }, pending ? "Emailed, awaiting your confirmation" : r.status === "amended" ? "Amended, not yet resubmitted" : "Draft")));
-      if (r.status === "submitted" && r.submissionId) b.append(el("div", { class: "mga-receipt", "data-testid": "mga-receipt" }, r.source === "email" ? `Sent by email to ${CONFIG.MGA.submitEmail} on ${M.fmtDate(r.submitted)} (reference ${r.submissionId}). Your sent email is the proof of lodgement.` : `Receipt ${r.submissionId}` + (r.receiptTo ? `, emailed to ${r.receiptTo}` : "") + ` on ${M.fmtDate(r.submitted)}.`));
+      if (r.status === "submitted" && r.submissionId) b.append(el("div", { class: "mga-receipt", "data-testid": "mga-receipt" }, r.source === "email" ? `Sent by email to ${CONFIG.MGA.submitEmail} on ${M.fmtDate(r.submitted)} (reference ${r.submissionId}). ${CONFIG.MGA.pilot ? "Pilot: this is not a lodgement with OGIA." : "Your sent email is the proof of lodgement."}` : `Receipt ${r.submissionId}` + (r.receiptTo ? `, emailed to ${r.receiptTo}` : "") + ` on ${M.fmtDate(r.submitted)}.`));
       if (pending) b.append(el("div", { class: "mga-receipt", style: "background:var(--amber-bg);color:var(--amber-fg)", "data-testid": "mga-receipt" }, `An email to ${CONFIG.MGA.submitEmail} was prepared on ${M.fmtDate(r.emailOpened || Date.now())} (reference ${r.submissionId}) but you have not confirmed that it was sent.`));
-      if (ro && this.role.kind !== "reviewer") b.append(el("div", { class: "card", style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, el("span", { style: "flex:1;font-size:13.5px;min-width:200px" }, pending ? "Once the email with the Excel file attached has gone to OGIA, confirm it here. If nothing opened, use the email text to send it yourself." : "This report has been submitted and is locked. Amend it only if a detail was wrong; OGIA will see the amended version."),
+      if (ro && this.role.kind !== "reviewer") b.append(el("div", { class: "card", style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, el("span", { style: "flex:1;font-size:13.5px;min-width:200px" }, pending ? `Once the email with the Excel file attached has gone to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}, confirm it here. If nothing opened, use the email text to send it yourself.` : `This report has been submitted and is locked. Amend it only if a detail was wrong; ${CONFIG.MGA.pilot ? "the pilot register" : "OGIA"} will hold the amended version.`),
         pending ? el("button", { class: "btn small", type: "button", "data-testid": "mga-email-text", onclick: () => this.showEmailText(r) }, "Show the email text") : null,
         pending ? el("button", { class: "btn small primary", type: "button", "data-testid": "mga-email-sent", onclick: () => this.markEmailSent(r) }, "I have sent the email") : null,
         el("button", { class: "btn small", type: "button", "data-testid": "mga-amend", onclick: () => this.amend() }, "Amend")));
@@ -2388,7 +2388,7 @@
       /* Footer */
       const foot = el("div", { class: "mga-foot" });
       if (!ro) {
-        foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-save", onclick: () => this.save({}) }, "Save draft"), el("button", { class: "btn primary", type: "submit", "data-testid": "mga-submit" }, "Submit to OGIA"));
+        foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-save", onclick: () => this.save({}) }, "Save draft"), el("button", { class: "btn primary", type: "submit", "data-testid": "mga-submit" }, CONFIG.MGA.pilot && this.mode() === "live" ? "Submit (pilot)" : "Submit to OGIA"));
         if (r.amendBackup) foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-discard", onclick: () => this.discardAmendment() }, "Discard amendment"));
         else if (r.created && !r.replacesSubmissionId) foot.append(el("button", { class: "btn", type: "button", "data-testid": "mga-withdraw", onclick: () => this.withdraw() }, "Withdraw"));
       }
@@ -2438,7 +2438,7 @@
       const chk = el("input", { type: "checkbox", "data-testid": "mga-confirm-check" });
       const modalBg = el("div", { class: "modal-bg", "data-testid": "mga-confirm" });
       const live = this.mode() === "live";
-      const btnOk = el("button", { class: "btn primary", type: "button", "data-testid": "mga-confirm-submit", disabled: true, onclick: async () => { btnOk.disabled = true; btnOk.textContent = "Sending…"; const ok = await this.send(r); modalBg.remove(); if (ok) this.backToList(); } }, live ? "Submit to OGIA" : "Submit (demo)");
+      const btnOk = el("button", { class: "btn primary", type: "button", "data-testid": "mga-confirm-submit", disabled: true, onclick: async () => { btnOk.disabled = true; btnOk.textContent = "Sending…"; const ok = await this.send(r); modalBg.remove(); if (ok) this.backToList(); } }, live ? (CONFIG.MGA.pilot ? "Submit (pilot)" : "Submit to OGIA") : "Submit (demo)");
       chk.addEventListener("change", () => { btnOk.disabled = !chk.checked; });
       modalBg.append(el("div", { class: "modal mga-summary", role: "dialog", "aria-modal": "true" }, el("h3", null, `Submit the ${r.period} report for ${r.rn ? "RN " + r.rn : r.boreName}?`),
         live ? el("div", { class: "mga-note" }, this.role.offline ? `OGIA's submission service was unavailable when you signed in. The page will try it again now and, if it is still down, offer to send the report by email to ${CONFIG.MGA.submitEmail}.` : `The report goes to ${this.registerText()} and ${this.mailboxText()}. A receipt is emailed to ${this.access ? this.access.email : "you"}.`) : null,
@@ -2534,7 +2534,7 @@
       r.status = "submitted"; r.submitted = Date.now(); r.by = this.role.user; r.source = "email";
       try { await this.store.save(r, this.role); } catch (e) { Toast.err("Could not record the email: " + ((e && e.message) || e)); return; }
       if (this.rec && this.rec.id === r.id) { this.rec = JSON.parse(JSON.stringify(r)); this.readOnly = true; }
-      Toast.ok(`Recorded as sent by email to ${CONFIG.MGA.submitEmail} (reference ${r.submissionId}). Keep the sent email as your proof of lodgement.`, { ms: 9000 });
+      Toast.ok(`Recorded as sent by email to ${CONFIG.MGA.submitEmail} (reference ${r.submissionId}). ${CONFIG.MGA.pilot ? "Pilot: this is not a lodgement with OGIA." : "Keep the sent email as your proof of lodgement."}`, { ms: 9000 });
       if (this.view === "form" && this.rec) this.renderForm(); else this.renderList();
     },
     showEmailText(r) {
@@ -2558,7 +2558,7 @@
       r.status = "amended"; r.amendedFrom = r.submitted || r.emailOpened || Date.now();
       r.replacesSubmissionId = pending ? (r.replacesSubmissionId || null) : (r.submissionId || null);   // an unconfirmed email may never have reached the register, so it is not "replaced"
       r.submissionId = ""; r.submitted = null; r.emailOpened = null; r.clientRef = MGA.newRef(); this.readOnly = false; this.renderForm();
-      Toast.info("The report is open for amendment. Submit it again when done; OGIA keeps the latest submission for each bore and period.");
+      Toast.info(`The report is open for amendment. Submit it again when done; ${CONFIG.MGA.pilot ? "the pilot register" : "OGIA"} keeps the latest submission for each bore and period.`);
     },
     async discardAmendment() {
       const r = this.rec; if (!r || !r.amendBackup) return;
@@ -2609,6 +2609,7 @@
   Mga.el.close.addEventListener("click", () => Mga.close());
   D.sheetBg.addEventListener("click", () => { if (!Mga.el.sheet.hidden) Mga.close(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !Mga.el.sheet.hidden) { const m = [...document.querySelectorAll(".modal-bg")].pop(); if (m) { if (m.cancel) m.cancel(); else m.remove(); } else Mga.close(); } });   // topmost dialog first; dialogs that return a promise resolve it
+  if (CONFIG.MGA.endpoint && CONFIG.MGA.pilot && !/^\[PILOT\]/.test(document.title)) document.title = "[PILOT] " + document.title;   // a live pilot copy is labelled from the moment it loads
   if (/(^|&)mga=1(&|$)/.test(location.hash.replace(/^#/, ""))) setTimeout(() => Mga.open(), 300);
 
   let readyFlags = { map: false, counts: false };

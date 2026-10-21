@@ -418,7 +418,7 @@
                         "parameters": {
                           "emailMessage/To": "OGIA.UWIR@dlgwv.qld.gov.au",
                           "emailMessage/Subject": "@{concat('MGA receipt email failed: ', outputs('Submission_ID'))}",
-                          "emailMessage/Body": "<p>The report @{outputs('Submission_ID')} was filed in the MGA register but the receipt email to @{body('Parse_report')?['submitter']?['email']} could not be sent (see the flow run history). Please forward the acknowledgement by hand.</p>",
+                          "emailMessage/Body": "<p>The report @{outputs('Submission_ID')} was filed in the MGA register but the receipt email to @{outputs('Receipt_fields')?['email']} could not be sent (see the flow run history). Please forward the acknowledgement by hand.</p>",
                           "emailMessage/Importance": "High"
                         }
                       },
@@ -449,7 +449,7 @@
               },
               "body": {
                 "ok": false,
-                "error": "@{if(greater(length(body('Lookup_tenure_holder')?['value']), 0), if(equals(string(coalesce(outputs('Holder_row')?['AccessCode'], '#none')), string(coalesce(body('Parse_report')?['accessCode'], ''))), concat('Use a ', outputs('Holder_row')?['EmailDomain'], ' email address for ', outputs('Holder_row')?['HolderName'], '.'), 'Access code not recognised for this tenure holder.'), 'Access code not recognised for this tenure holder.')}"
+                "error": "@{if(greater(length(body('Lookup_tenure_holder')?['value']), 0), if(and(equals(toUpper(string(coalesce(outputs('Holder_row')?['AccessCode'], '#none'))), toUpper(string(coalesce(body('Parse_report')?['accessCode'], '')))), equals(toLower(string(coalesce(outputs('Holder_row')?['Active'], ''))), 'yes')), concat('Use a ', outputs('Holder_row')?['EmailDomain'], ' email address for ', outputs('Holder_row')?['HolderName'], '.'), 'Access code not recognised for this tenure holder.'), 'Access code not recognised for this tenure holder.')}"
               }
             }
           }
