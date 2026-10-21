@@ -2,7 +2,7 @@
 
 This gets the Bore Search Tool's MGA module working end to end (page, flow, Excel register, receipt email) using only things you control: a Power Automate environment that belongs to you, a workbook in your own OneDrive, your own mailbox (Jeremy.Wolff@dlgwv.qld.gov.au) and your personal GitHub Pages site. Nothing touches OGIA's mailbox, OneDrive or Power Platform environment, so you can demonstrate it to your manager first and hand the production version (`MGA_SETUP.md`) to OGIA afterwards.
 
-Time: about 1.5 hours the first time, most of it clicking through flow A. Everything below uses the `power_automate/pilot` folder.
+Time: about 45 minutes, most of it waiting for sign-ups and uploads. Everything below uses the `power_automate/pilot` folder.
 
 | Pilot file | What it is |
 |---|---|
@@ -10,7 +10,8 @@ Time: about 1.5 hours the first time, most of it clicking through flow A. Everyt
 | `pilot/flow_A_http_submission.definition.json` | Flow A for your own mailbox: receipts go out with "Send an email (V2)" from you, copies and failure notices come to you. |
 | `pilot/flow_B_email_fallback.definition.json` | Flow B on your own Inbox ("When a new email arrives (V3)"). Optional for the demo. |
 | `pilot/sample_request.json`, `sample_request_verify.json`, `sample_response*.json`, `sample_email.txt` | Test payloads (a submission, a sign-in check, the expected answers). The sample email is addressed to you. |
-| `pilot/email_bodies/*.html` | Receipt and notice bodies as plain HTML for pasting into the designer's code view. |
+| `pilot/import_packages/OGIA_MGA_submission_pilot.zip`, `OGIA_MGA_email_lodgement_pilot.zip` | Ready-made flows to import (flow A and the optional flow B). Importing replaces building by hand. |
+| `pilot/email_bodies/*.html` | Receipt and notice bodies as plain HTML for pasting into the designer's code view (only needed if you build by hand). |
 
 The page (`index.html`) is already set to send email lodgements and show your address: `CONFIG.MGA.submitEmail` is `Jeremy.Wolff@dlgwv.qld.gov.au`. For production, change it to `OGIA.UWIR@dlgwv.qld.gov.au` together with the flow URL.
 
@@ -38,7 +39,21 @@ Two checks before you continue:
 
 Open `pilot/MGA_master_register_pilot.xlsx`, go to the Tenure holders sheet and replace the four `CHANGE-ME-...` codes with codes of your own (anything you can remember for the demo; write them down somewhere private). Save, then put the file in a folder of your OneDrive for Business, for example `Documents/MGA pilot`. Do not rename the sheets, the tables (`MGAData`, `TenureHolders`) or any column header. Open it once in Excel for the web and close it again, so OneDrive has finished indexing it before the flow looks for it.
 
-## Step 3. Build flow A (about 40 minutes)
+## Step 3. Import flow A (10 minutes)
+
+The flow comes ready-made in `pilot/import_packages/OGIA_MGA_submission_pilot.zip`. In make.powerautomate.com, with your environment selected:
+
+1. Left menu, **My flows**. On the toolbar choose **Import**, then **Import Package (Legacy)**. Click **Upload**, pick the zip, Open.
+2. On the import page, first row (the flow): click the pencil, Setup **Create as new**, Save.
+3. Under **Related resources** there is one row per connection (Excel Online (Business), Office 365 Outlook): click each pencil, choose your connection from the list (or **+ Create new** and sign in with your work account), Save. The warning icons turn into ticks.
+4. Click **Import**. Then **Open flow** (or My flows, open "OGIA MGA submission (pilot)").
+5. The three Excel actions need your file: open **Lookup tenure holder**, **Find existing** and **Add row to register** one after the other. In each, set Location **OneDrive for Business**, Document Library **OneDrive**, File: pick `MGA_master_register_pilot.xlsx`, Table: keep `TenureHolders` for the first and `MGAData` for the other two (the field may show it as a custom value; that is fine). In **Add row to register** the column boxes stay filled; if the designer blanks them, copy each mapping from the definition file.
+6. Open the trigger (the first card): check **Who can trigger the flow** shows **Anyone**, and in its Settings that Concurrency Control is on with degree of parallelism 1. Then **Save**.
+7. Back on the flow's detail page choose **Turn on** (imported flows arrive turned off). Open the trigger once more and copy the **HTTP URL**; it only exists after the first save.
+
+If the upload is refused with "Importing packages with flows is disabled because the 'Create in Dataverse solutions' option was enabled by your admin", the department has switched that environment to solutions only; try the import in your developer environment (step 1), where you are the administrator and can turn that switch off (Power Platform admin centre, Environments, your environment, Settings, Product, Features). If the import still fails, build the flow by hand as described next; it is the same flow.
+
+### Building flow A by hand instead (about 40 minutes)
 
 Follow section 2 of `MGA_SETUP.md` step by step, with these pilot differences:
 
@@ -90,7 +105,7 @@ Reset between rehearsals: in the page, Sign out, then in the browser clear site 
 
 ## Step 7. Optional: flow B on your own Inbox (30 minutes)
 
-Follow section 6 of `MGA_SETUP.md` with these differences: the trigger is **When a new email arrives (V3)** on your own mailbox (Folder Inbox, Subject Filter `MGA lodgement by email`), with only the first trigger condition (the one about "mga annual report received"); do not add the sender condition, because in the pilot you send the lodgement email to yourself. "Flag email (V2)" needs no mailbox address. The notices go to `Jeremy.Wolff@dlgwv.qld.gov.au`, bodies from `pilot/email_bodies/`. Test by sending yourself `pilot/sample_email.txt` (subject line and body; HTML or plain-text format both work): a row with Submission ID `EMAIL-...` appears, and sending the same email a minute later adds nothing.
+Import `pilot/import_packages/OGIA_MGA_email_lodgement_pilot.zip` the same way as flow A (three connections this time: Excel Online (Business), Office 365 Outlook and Content Conversion), re-pick the register file in **Lookup tenure holder**, **Find existing** and **Add row to register**, save and turn it on. Or follow section 6 of `MGA_SETUP.md` with these differences: the trigger is **When a new email arrives (V3)** on your own mailbox (Folder Inbox, Subject Filter `MGA lodgement by email`), with only the first trigger condition (the one about "mga annual report received"); do not add the sender condition, because in the pilot you send the lodgement email to yourself. "Flag email (V2)" needs no mailbox address. The notices go to `Jeremy.Wolff@dlgwv.qld.gov.au`, bodies from `pilot/email_bodies/`. Test by sending yourself `pilot/sample_email.txt` (subject line and body; HTML or plain-text format both work): a row with Submission ID `EMAIL-...` appears, and sending the same email a minute later adds nothing.
 
 ## When the pilot is over
 

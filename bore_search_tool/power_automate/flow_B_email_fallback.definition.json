@@ -157,8 +157,8 @@
             },
             "parameters": {
               "source": "me",
-              "drive": "<pick the OneDrive or SharePoint library in the designer>",
-              "file": "<pick MGA_master_register.xlsx>",
+              "drive": "",
+              "file": "",
               "table": "TenureHolders",
               "$filter": "@{concat('Code eq ''', toUpper(string(coalesce(body('Parse_block')?['h'], ''))), '''')}"
             }
@@ -236,8 +236,8 @@
                 },
                 "parameters": {
                   "source": "me",
-                  "drive": "<pick the OneDrive or SharePoint library in the designer>",
-                  "file": "<pick MGA_master_register.xlsx>",
+                  "drive": "",
+                  "file": "",
                   "table": "MGAData",
                   "$filter": "@{if(empty(outputs('Client_ref')), 'ClientRef eq ''NONE-NEVER-MATCHES''', concat('ClientRef eq ''', outputs('Client_ref'), ''''))}",
                   "$top": 1
@@ -285,8 +285,8 @@
                       },
                       "parameters": {
                         "source": "me",
-                        "drive": "<pick the OneDrive or SharePoint library in the designer>",
-                        "file": "<pick MGA_master_register.xlsx>",
+                        "drive": "",
+                        "file": "",
                         "table": "MGAData",
                         "item/Tenure Holder": "@{outputs('Holder_row')?['HolderName']}",
                         "item/RN": "@body('Parse_block')?['r']?['rn']",

@@ -19,7 +19,8 @@ Every version of a report carries a client reference (`ClientRef`). Both flows l
 | `power_automate/flow_A_http_submission.definition.json` | The submission flow, action by action, in Power Automate's own definition format. Use it as the reference while building the flow (section 2) or compare with Peek code afterwards. Every action carries a description saying which designer action it is. |
 | `power_automate/flow_B_email_fallback.definition.json` | Optional flow that files emailed reports into the register (section 6). |
 | `power_automate/sample_request.json`, `sample_request_verify.json`, `sample_response.json`, `sample_response_duplicate.json` | What the page sends (a submission and a sign-in check) and expects back. Use them as test bodies. |
-| `power_automate/email_bodies/*.html` | The receipt and notice bodies as plain HTML, ready to paste into the designer's code view. |
+| `power_automate/import_packages/OGIA_MGA_submission.zip`, `OGIA_MGA_email_lodgement.zip` | The two flows as ready-made import packages (My flows, Import, Import Package (Legacy)). Importing replaces the click-by-click build in sections 2 and 6; afterwards only the connections, the register file and the trigger settings need checking. |
+| `power_automate/email_bodies/*.html` | The receipt and notice bodies as plain HTML, ready to paste into the designer's code view (only needed when building by hand). |
 | `power_automate/sample_email.txt` | An email exactly as the page prepares it (subject, text and coded block), for testing flow B. |
 
 ## 1. Before you start (10 minutes)
@@ -29,9 +30,11 @@ Every version of a report carries a client reference (`ClientRef`). Both flows l
 3. **DLP check.** In the Power Platform admin centre (Policies, Data policies) confirm the environment's policy puts HTTP Request, Excel Online (Business), Office 365 Outlook and Content Conversion in the same group (usually Business). A tenant data policy that blocks or separates the HTTP trigger shows either as a data-policy error when you save, or as the flow saving and then appearing as Suspended in My flows (reason: company DLP violation); in both cases only the Power Platform administrator can change the policy.
 4. **Upload the register.** Put `MGA_master_register.xlsx` in a OneDrive for Business folder of the owner account (or a SharePoint library). Do not rename sheets, tables or column headers. Open the Tenure holders sheet: replace the EmailDomain values with each company's real email domain if different, written with the leading `@` as shipped, for example `@arrowenergy.com.au` (never leave one blank: the flow refuses a company with a blank domain), and replace every AccessCode placeholder (`SET-BY-OGIA-...`) with a code of OGIA's own, for example three groups of four letters and digits. The codes must never be written into this guide, the page or anything published; this folder has been in a public repository, which is why the file ships with placeholders. Codes can be changed at any time; the flow reads the sheet on every submission.
 
-## 2. Create flow A (about 35 minutes, click by click)
+## 2. Create flow A
 
-Power Automate (make.powerautomate.com) > My flows > New flow > **Instant cloud flow** > name `OGIA MGA submission` > trigger **When an HTTP request is received** > Create.
+**Fastest: import it (10 minutes).** Power Automate (make.powerautomate.com), in the OGIA environment under the owner account: My flows > Import > **Import Package (Legacy)** > Upload `import_packages/OGIA_MGA_submission.zip`. Set the flow row to **Create as new**; under Related resources pick the owner account's Excel Online (Business) and Office 365 Outlook connections; Import. Then open the flow and (a) in **Lookup tenure holder**, **Find existing** and **Add row to register** pick `MGA_master_register.xlsx` from its OneDrive or SharePoint location (tables `TenureHolders`, `MGAData`, `MGAData`); (b) open **Email receipt** and confirm the Original Mailbox Address is OGIA.UWIR@dlgwv.qld.gov.au; (c) open the trigger and confirm Who can trigger the flow is **Anyone** and, in Settings, Concurrency Control is on with degree of parallelism 1; (d) Save, **Turn on**, and copy the trigger's HTTP URL. If the upload is refused because the environment only allows solutions ("Create in Dataverse solutions"), ask the Power Platform administrator to turn that feature off for the environment or build the flow by hand as follows.
+
+**Building by hand (about 35 minutes, click by click).** Power Automate (make.powerautomate.com) > My flows > New flow > **Instant cloud flow** > name `OGIA MGA submission` > trigger **When an HTTP request is received** > Create.
 
 Action names matter: the expressions below refer to earlier actions by name with spaces written as underscores (`body('Parse_report')`). Rename each action exactly as shown before writing expressions that use it.
 
@@ -116,9 +119,9 @@ Give each company its access code and the page URL. Tell them: one officer per s
 
 **November:** copy the register to the records system as the workbook of record. Rotate access codes if company staff have changed (edit the Tenure holders sheet; tell the companies). Reconcile: one current row per bore per tenure holder.
 
-## 6. Optional flow B: file emailed reports automatically (standard connectors, about 30 minutes)
+## 6. Optional flow B: file emailed reports automatically (standard connectors)
 
-Trigger **When a new email arrives in a shared mailbox (V2)** on `OGIA.UWIR@dlgwv.qld.gov.au`, folder Inbox, Subject Filter `MGA lodgement by email` (the subject the page writes). In the trigger's Settings add two **Trigger conditions**, so flow A's own receipts and anything the OGIA mailbox sends never start a run:
+**Import:** `import_packages/OGIA_MGA_email_lodgement.zip` the same way as flow A (connections: Excel Online (Business), Office 365 Outlook, Content Conversion), re-pick the register file in the three Excel actions, check the trigger's mailbox address is OGIA.UWIR, save and turn on. **Or build it by hand (about 30 minutes):** Trigger **When a new email arrives in a shared mailbox (V2)** on `OGIA.UWIR@dlgwv.qld.gov.au`, folder Inbox, Subject Filter `MGA lodgement by email` (the subject the page writes). In the trigger's Settings add two **Trigger conditions**, so flow A's own receipts and anything the OGIA mailbox sends never start a run:
 - `@not(startsWith(toLower(string(coalesce(triggerOutputs()?['body/subject'], ''))), 'mga annual report received'))`
 - `@not(equals(toLower(string(coalesce(triggerOutputs()?['body/from'], ''))), 'ogia.uwir@dlgwv.qld.gov.au'))`
 
