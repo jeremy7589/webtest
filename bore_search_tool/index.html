@@ -563,7 +563,7 @@
     submitEmail: "Jeremy.Wolff@dlgwv.qld.gov.au",        // PILOT: receipts, copies and email lodgements go here. At go-live change to OGIA.UWIR@dlgwv.qld.gov.au (OGIA's reporting mailbox from the template's READ ME sheet)
     emailFallback: true,                                 // when the flow cannot be reached, offer to send the report by email instead
     tenureUrl: "https://services1.arcgis.com/HrMiNYsSqqPpLTDE/arcgis/rest/services/petroleum_replace_WFL1/FeatureServer/0",   // UWIR 2025 tenure with Responsible_tenure_Holder
-    holders: ["ARROW", "ORIGIN", "SANTOS", "QGC"],      // companies that can report; codes match the tenure layer and the TenureHolders sheet of the master workbook
+    holders: ["ARROW", "ORIGIN", "SANTOS", "QGC", "SENEX", "AGL", "ADZ Energy", "Bridgeport Energy", "Denison Gas", "OGT", "Other"],   // every responsible tenure holder in the UWIR 2025 tenure layer, plus "Other" (company name typed in) for anyone else; codes match the tenure layer and the TenureHolders sheet
     appVersion: "3.1.0",
     timeoutMs: 45000,                                    // how long the page waits for the flow before offering Try again / email
   };
@@ -2051,7 +2051,7 @@
       return { errors, warnings, ok: errors.length === 0 };
     }
     function toRow(r) {
-      return { "Tenure Holder": holderName(r.holder), "RN": /^\d+$/.test(String(r.rn || "")) ? Number(r.rn) : (r.rn || ""), "Bore assessment status": r.assessStatus || "", "Bore assessment date": toDmy(r.assessDate), "Submitted to OGIA date": toDmy(r.submittedDate), "Bore assessment outcome": r.outcome || "", "MGA status": r.mgaStatus || "", "Agreement Date": toDmy(r.agreementDate), "Make good measure type": measureText(r), "Decommission status": r.decomStatus || "", "Decommission date": toDmy(r.decomDate), "Comments": r.comments || "", "Bore name": r.boreName || "", "Reporting period": r.period || "", "Report status": r.status === "email-pending" ? "emailed, not confirmed" : (r.status || ""), "Submission ID": r.submissionId || "" };
+      return { "Tenure Holder": (r.holder === "Other" && r.holderName) ? r.holderName : holderName(r.holder), "RN": /^\d+$/.test(String(r.rn || "")) ? Number(r.rn) : (r.rn || ""), "Bore assessment status": r.assessStatus || "", "Bore assessment date": toDmy(r.assessDate), "Submitted to OGIA date": toDmy(r.submittedDate), "Bore assessment outcome": r.outcome || "", "MGA status": r.mgaStatus || "", "Agreement Date": toDmy(r.agreementDate), "Make good measure type": measureText(r), "Decommission status": r.decomStatus || "", "Decommission date": toDmy(r.decomDate), "Comments": r.comments || "", "Bore name": r.boreName || "", "Reporting period": r.period || "", "Report status": r.status === "email-pending" ? "emailed, not confirmed" : (r.status || ""), "Submission ID": r.submissionId || "" };
     }
     function toCsv(records) {
       const q = (v) => { let s = v == null ? "" : String(v); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -2173,13 +2173,15 @@
       if (report) p.report = report;   // a verify carries no report key at all, so a flow whose schema types report as an object still accepts it
       return p;
     },
-    async signIn({ holder, code, email, name }) {
+    async signIn({ holder, code, email, name, other }) {
       const err = (m) => { const e = this.el.body.querySelector("[data-testid=mga-access-error]"); if (e) { e.textContent = m; e.hidden = false; } };
       if (!CONFIG.MGA.holders.includes(holder)) return err("Choose your company.");
       if (!/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(email || "")) return err("Enter your work email address; the receipt is sent there.");
+      const otherName = (other || "").trim().replace(/\s+/g, " ").slice(0, 120);
+      if (holder === "Other" && otherName.length < 3) return err("Type the name of your company.");
       if (this.mode() === "email") {   // no flow to check a code against: the company and the sender's address are the record
-        this.access = { holder, code: "", email: email.trim().toLowerCase(), name: (name || "").trim() };
-        this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access, lodge: "email" };
+        this.access = { holder, code: "", email: email.trim().toLowerCase(), name: (name || "").trim(), otherName: holder === "Other" ? otherName : "" };
+        this.role = { kind: "holder", holders: [holder], user: this.access.email, name: `${holder === "Other" ? otherName : MGA.holderName(holder)} · ${this.access.email}`, demo: false, access: this.access, lodge: "email", otherName: holder === "Other" ? otherName : "" };
         this.store.setRole(this.role); this.view = "list"; if (S.bore) renderCard(S.bore); this.render(); return;
       }
       if (!(code || "").trim()) return err("Enter the access code OGIA issued to your company.");
@@ -2240,21 +2242,25 @@
       if (this.mode() === "demo") {
         b.append(el("div", { class: "label" }, "Choose a role for this demonstration"));
         const g = el("div", { class: "role-grid", "data-testid": "mga-role-picker" });
-        CONFIG.MGA.holders.forEach(code => g.append(el("button", { class: "btn bigbtn", type: "button", "data-testid": "mga-role-" + code, onclick: () => this.setDemoRole({ kind: "holder", holders: [code], user: "demo." + code.toLowerCase() + "@example.com", name: MGA.holderName(code) + " (demo)" }) }, icon("home"), MGA.holderName(code))));
+        CONFIG.MGA.holders.filter(c => c !== "Other").forEach(code => g.append(el("button", { class: "btn bigbtn", type: "button", "data-testid": "mga-role-" + code, onclick: () => this.setDemoRole({ kind: "holder", holders: [code], user: "demo." + code.toLowerCase() + "@example.com", name: MGA.holderName(code) + " (demo)" }) }, icon("home"), MGA.holderName(code))));
         g.append(el("button", { class: "btn bigbtn", type: "button", "data-testid": "mga-role-OGIA", onclick: () => this.setDemoRole({ kind: "reviewer", holders: MGA.HOLDERS.map(h => h.code), user: "demo.ogia@example.com", name: "OGIA reviewer (demo)" }) }, icon("check"), "OGIA reviewer (reads every company)"));
         b.append(g, el("p", { class: "help", style: "margin-top:12px" }, "In production this screen asks for the company's access code and the person's work email. Submissions are checked by OGIA's flow, appended to the master register on OneDrive and acknowledged by email. OGIA staff read the register directly rather than through this page."));
         return;
       }
       const form = el("form", { class: "mga-access", "data-testid": "mga-access", novalidate: true });
-      const holderSel = el("select", { class: "input", id: "mgaAccHolder", "data-testid": "mga-acc-holder" }, el("option", { value: "" }, "Choose your company…"), ...CONFIG.MGA.holders.map(h => el("option", { value: h }, MGA.holderName(h))));
+      const holderList = CONFIG.MGA.holders.filter(h => h !== "Other" || this.mode() === "email");
+      const holderSel = el("select", { class: "input", id: "mgaAccHolder", "data-testid": "mga-acc-holder" }, el("option", { value: "" }, "Choose your company…"), ...holderList.map(h => el("option", { value: h }, h === "Other" ? "Other company (type its name)" : MGA.holderName(h))));
       const codeInp = el("input", { class: "input", id: "mgaAccCode", type: "password", autocomplete: "off", "data-testid": "mga-acc-code", placeholder: "Issued by OGIA to your company" });
       const emailInp = el("input", { class: "input", id: "mgaAccEmail", type: "email", autocomplete: "email", "data-testid": "mga-acc-email", placeholder: "you@company.com.au" });
       const nameInp = el("input", { class: "input", id: "mgaAccName", type: "text", autocomplete: "name", "data-testid": "mga-acc-name", placeholder: "Optional" });
       const errBox = el("div", { class: "ferr", "data-testid": "mga-access-error", role: "alert", hidden: true });
       const em = this.mode() === "email";
-      form.append(this.field("Company (responsible tenure holder)", holderSel, { id: "accHolder" }), em ? null : this.field("Access code", codeInp, { id: "accCode", help: `One code per company. Ask ${CONFIG.MGA.submitEmail} if you do not have it.` }), this.field("Your work email", emailInp, { id: "accEmail", help: em ? `Each report is sent from your own email program to ${CONFIG.MGA.submitEmail}; your sent email is your record.` : `The receipt for each submission is sent to this address, with a copy to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}.` }), this.field("Your name", nameInp, { id: "accName" }), errBox,
+      const otherInp = el("input", { class: "input", id: "mgaAccOther", type: "text", "data-testid": "mga-acc-other", placeholder: "Registered company name" });
+      const otherField = this.field("Company name", otherInp, { id: "accOther", help: "The company that holds the make good obligation for the bores you report." }); otherField.hidden = true;
+      holderSel.addEventListener("change", () => { otherField.hidden = holderSel.value !== "Other"; });
+      form.append(this.field("Company (responsible tenure holder)", holderSel, { id: "accHolder", help: em ? "Any company with make good obligations, inside or outside the Surat CMA. Not listed? Choose Other." : `Not listed? Ask ${CONFIG.MGA.submitEmail} for an access code for your company.` }), otherField, em ? null : this.field("Access code", codeInp, { id: "accCode", help: `One code per company. Ask ${CONFIG.MGA.submitEmail} if you do not have it.` }), this.field("Your work email", emailInp, { id: "accEmail", help: em ? `Each report is sent from your own email program to ${CONFIG.MGA.submitEmail}; your sent email is your record.` : `The receipt for each submission is sent to this address, with a copy to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}.` }), this.field("Your name", nameInp, { id: "accName" }), errBox,
         el("div", { style: "display:flex;gap:8px;align-items:center" }, el("button", { class: "btn primary", type: "submit", "data-testid": "mga-acc-continue" }, "Continue"), el("span", { class: "help", style: "margin:0" }, `Saved only for this tab; your email and name are sent with each report and kept in ${this.registerText()}.`)));
-      form.addEventListener("submit", (e) => { e.preventDefault(); this.signIn({ holder: holderSel.value, code: codeInp.value, email: emailInp.value, name: nameInp.value }); });
+      form.addEventListener("submit", (e) => { e.preventDefault(); this.signIn({ holder: holderSel.value, code: codeInp.value, email: emailInp.value, name: nameInp.value, other: otherInp.value }); });
       b.append(form);
     },
     async renderList() {
@@ -2303,7 +2309,7 @@
           el("span", null, el("span", { class: "rstat " + (r.status === "email-pending" ? "amended" : (r.status || "draft")) }, r.status === "submitted" ? "Submitted" : r.status === "email-pending" ? "Email not confirmed" : r.status === "amended" ? "Amended" : "Draft"), late ? el("span", { class: "rstat amended", style: "margin-left:4px", "data-testid": "mga-late" }, "Late") : null)));
       });
     },
-    async newFor(rn) { const holder = this.activeHolder || this.role.holders[0]; this.rec = MGA.blank(holder, this.period, rn); this.readOnly = false; this.touched = false; this.view = "form"; await this.render(); if (rn) this.checkBore(); },
+    async newFor(rn) { const holder = this.activeHolder || this.role.holders[0]; this.rec = MGA.blank(holder, this.period, rn); if (holder === "Other") this.rec.holderName = this.role.otherName || ""; this.readOnly = false; this.touched = false; this.view = "form"; await this.render(); if (rn) this.checkBore(); },
     edit(r) { this.rec = JSON.parse(JSON.stringify(r)); this.readOnly = this.role.kind === "reviewer" || r.status === "submitted" || r.status === "email-pending"; this.touched = false; this.view = "form"; this.render(); },
     backToList() { clearTimeout(this.autosaveTimer); this.view = "list"; this.rec = null; this.render(); },
     field(label, control, { help, err, testid, id } = {}) {
@@ -2347,7 +2353,7 @@
       b.textContent = "";
       const per = MGA.periodByKey(r.period) || MGA.currentPeriod(Date.now());
       const pending = r.status === "email-pending";
-      b.append(el("div", { class: "mga-toolbar" }, el("button", { class: "btn small", type: "button", "data-testid": "mga-back", onclick: () => this.backToList() }, "‹ Back to list"), el("span", { class: "chip" }, `Period ${per.key}: ${per.label}`), el("span", { class: "chip" }, MGA.holderName(r.holder)), r.status === "submitted" ? el("span", { class: "rstat submitted", "data-testid": "mga-form-status" }, "Submitted " + (r.submitted ? M.fmtDate(r.submitted) : "")) : el("span", { class: "rstat " + (pending ? "amended" : r.status), "data-testid": "mga-form-status" }, pending ? "Emailed, awaiting your confirmation" : r.status === "amended" ? "Amended, not yet resubmitted" : "Draft")));
+      b.append(el("div", { class: "mga-toolbar" }, el("button", { class: "btn small", type: "button", "data-testid": "mga-back", onclick: () => this.backToList() }, "‹ Back to list"), el("span", { class: "chip" }, `Period ${per.key}: ${per.label}`), el("span", { class: "chip" }, r.holder === "Other" && r.holderName ? r.holderName : MGA.holderName(r.holder)), r.status === "submitted" ? el("span", { class: "rstat submitted", "data-testid": "mga-form-status" }, "Submitted " + (r.submitted ? M.fmtDate(r.submitted) : "")) : el("span", { class: "rstat " + (pending ? "amended" : r.status), "data-testid": "mga-form-status" }, pending ? "Emailed, awaiting your confirmation" : r.status === "amended" ? "Amended, not yet resubmitted" : "Draft")));
       if (r.status === "submitted" && r.submissionId) b.append(el("div", { class: "mga-receipt", "data-testid": "mga-receipt" }, r.source === "email" ? `Sent by email to ${CONFIG.MGA.submitEmail} on ${M.fmtDate(r.submitted)} (reference ${r.submissionId}). ${CONFIG.MGA.pilot ? "Pilot: this is not a lodgement with OGIA." : "Your sent email is the proof of lodgement."}` : `Receipt ${r.submissionId}` + (r.receiptTo ? `, emailed to ${r.receiptTo}` : "") + ` on ${M.fmtDate(r.submitted)}.`));
       if (pending) b.append(el("div", { class: "mga-receipt", style: "background:var(--amber-bg);color:var(--amber-fg)", "data-testid": "mga-receipt" }, `An email to ${CONFIG.MGA.submitEmail} was prepared on ${M.fmtDate(r.emailOpened || Date.now())} (reference ${r.submissionId}) but you have not confirmed that it was sent.`));
       if (ro && this.role.kind !== "reviewer") b.append(el("div", { class: "card", style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, el("span", { style: "flex:1;font-size:13.5px;min-width:200px" }, pending ? `Once the email with the Excel file attached has gone to ${CONFIG.MGA.pilot ? "the pilot mailbox" : "OGIA"}, confirm it here. If nothing opened, use the email text to send it yourself.` : `This report has been submitted and is locked. Amend it only if a detail was wrong; ${CONFIG.MGA.pilot ? "the pilot register" : "OGIA"} will hold the amended version.`),
@@ -2417,14 +2423,14 @@
     },
     showBoreCheck(c) {
       const box = $("mgaBoreCheck"); if (!box) return; box.textContent = ""; box.hidden = false;
-      if (!c.found) { box.append(el("span", { "data-testid": "mga-check-notfound" }, `RN ${c.rn} is not in OGIA's Surat CMA bore list. If the bore is unregistered, leave the RN blank and enter a bore name; otherwise check the number.`)); return; }
+      if (!c.found) { box.append(el("span", { "data-testid": "mga-check-notfound" }, `RN ${c.rn} is not in OGIA's Surat CMA bore list. That is fine: any bore with a make good obligation in Queensland can be reported here. Check the number against the registration you hold; for a bore with no registration number, leave RN blank and give a bore name.`)); return; }
       const a = c.a, v = verdictOf(a);
       box.append(el("div", null, el("b", null, `RN ${a.RN}`), ` · ${a.Dominant_Formation || "formation not recorded"} · `, el("span", { class: "badge-mini " + v.tone }, shortBadge(a)), ` · OGIA-recorded MGA status: ${a.MGA_status || "none"} · bore status: ${a.Bore_status || "not recorded"}`));
       const holders = (c.tenure || []).map(t => t.holder);
-      if (!holders.length) box.append(el("div", { class: "fwarn", style: "margin-top:4px" }, "This bore is outside the mapped CSG tenure areas."));
+      if (!holders.length) box.append(el("div", { class: "fwarn", style: "margin-top:4px" }, "This bore is outside the mapped Surat CMA tenure areas; report it as your company's bore if you hold the make good obligation."));
       else box.append(el("div", { style: "margin-top:4px" }, "Responsible tenure holder at this location: ", el("b", null, c.tenure.map(t => `${MGA.holderName(t.holder)} (${t.tenure})`).join("; "))));
-      if (this.role.kind === "holder" && holders.length && !holders.some(h => this.role.holders.includes(h))) box.append(el("div", { class: "ferr", style: "margin-top:4px", "data-testid": "mga-tenure-warning" }, `This bore sits in ${MGA.holderName(holders[0])}'s tenure, not ${MGA.holderName(this.role.holders[0])}'s. Continue only if your company holds the make good obligation for it.`));
-      if ((a.UWIR25_cat || "Not listed") === "Not listed") box.append(el("div", { class: "fwarn", style: "margin-top:4px" }, "This bore is not on the UWIR 2025 list of affected bores. A report is only required where make good obligations exist."));
+      if (this.role.kind === "holder" && holders.length && !holders.some(h => this.role.holders.includes(h))) box.append(el("div", { class: "ferr", style: "margin-top:4px", "data-testid": "mga-tenure-warning" }, `This bore sits in ${MGA.holderName(holders[0])}'s tenure, not ${this.role.otherName || MGA.holderName(this.role.holders[0])}'s. Continue only if your company holds the make good obligation for it (for example under an agreement made directly with the landholder).`));
+      if ((a.UWIR25_cat || "Not listed") === "Not listed") box.append(el("div", { class: "fwarn", style: "margin-top:4px" }, "This bore is not on the UWIR 2025 list of immediately affected bores. Reports cover any bore with a make good obligation, including agreements made directly with the landholder; report it the same way."));
       const bn = $("mga_boreName"); if (bn && !this.rec.boreName && a.Bore_purpose) { /* leave bore name to the user */ }
     },
     async duplicateOf(rec) { const rows = await this.store.list({ period: rec.period, holders: [rec.holder] }); const rn = String(rec.rn || "").trim(); return rows.find(r => r.id !== rec.id && r.status !== "withdrawn" && rn && String(r.rn) === rn) || null; },   // a withdrawn report must not block a fresh one for the same bore
@@ -2500,7 +2506,7 @@
        base64 survives line wrapping. The attached Excel file is the authoritative copy for manual entry. Block keys: h holder code, p period, e email, n name, ref client reference, rep replaced submission, app version, r row (rn, bas, bad, sod, bao, mgs, agd, mgt, dcs, dcd, cmt, bn). */
     emailFor(r) {
       const a = this.access || {}, ref = MGA.refFor(r), id = "EMAIL-" + ref, row = MGA.toRow({ ...r, status: "submitted", submissionId: id });
-      const subject = `MGA lodgement by email ${r.period}: ${r.rn ? "RN " + r.rn : (r.boreName || "unregistered bore")} [${MGA.holderName(r.holder)}] ${id}`;
+      const subject = `MGA lodgement by email ${r.period}: ${r.rn ? "RN " + r.rn : (r.boreName || "unregistered bore")} [${row["Tenure Holder"]}] ${id}`;
       const human = [this.mode() === "email" ? "Make good agreement annual report (Water Act 2000, s437B), lodged by email from the Bore Search Tool." : "Make good agreement annual report (Water Act 2000, s437B), lodged by email because the Bore Search Tool could not reach OGIA's submission service.", "",
         `Reference: ${id}`, `Tenure holder: ${row["Tenure Holder"]}`, `Reporting period: ${r.period}`, `Bore: ${r.rn ? "RN " + r.rn : "unregistered"}${r.boreName ? " " + r.boreName : ""}`,
         `Bore assessment: ${row["Bore assessment status"] || "-"}${row["Bore assessment outcome"] ? " / " + row["Bore assessment outcome"] : ""}`, `MGA status: ${row["MGA status"] || "-"}`, `Make good measures: ${row["Make good measure type"] || "-"}`,
@@ -2508,7 +2514,7 @@
         "The attached Excel file holds the full row in OGIA's template layout, including the comments. Please attach it before sending."];
       const keys = { rn: "RN", bas: "Bore assessment status", bad: "Bore assessment date", sod: "Submitted to OGIA date", bao: "Bore assessment outcome", mgs: "MGA status", agd: "Agreement Date", mgt: "Make good measure type", dcs: "Decommission status", dcd: "Decommission date", cmt: "Comments", bn: "Bore name" };
       const short = {}; Object.entries(keys).forEach(([k, c]) => { if (row[c] !== "" && row[c] != null) short[k] = row[c]; });
-      const block = { v: 2, h: r.holder, p: r.period, e: a.email || "", n: a.name || "", ref, rep: r.replacesSubmissionId || null, app: CONFIG.MGA.appVersion, r: short };
+      const block = { v: 2, h: r.holder, hn: r.holder === "Other" ? (r.holderName || "") : undefined, p: r.period, e: a.email || "", n: a.name || "", ref, rep: r.replacesSubmissionId || null, app: CONFIG.MGA.appVersion, r: short };
       const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(block))));
       const href = (body) => `mailto:${encodeURIComponent(CONFIG.MGA.submitEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       const full = [human[0], "", `<<MGA-JSON>>${b64}<</MGA-JSON>>`, "", ...human.slice(2)].join("\n");
