@@ -1412,7 +1412,7 @@
       el("button", { class: "btn small", type: "button", "data-testid": "copy-summary", onclick: () => copyText(summaryText(a), "Summary copied") }, icon("copy"), "Copy summary"),
       el("button", { class: "btn small", type: "button", "data-testid": "print-btn", onclick: printCard }, icon("print"), "Print"),
       S.staff ? el("button", { class: "btn small", type: "button", "data-testid": "compare-add", onclick: () => Chart.addCompare(a.RN) }, icon("plus"), "Compare") : null,
-      (Mga.role && Mga.role.kind === "holder") ? el("button", { class: "btn small", type: "button", "data-testid": "report-bore", onclick: () => Mga.openNew(a.RN) }, icon("doc"), "Report on this bore") : null,
+      (!Mga.role || Mga.role.kind === "holder") ? el("button", { class: "btn small", type: "button", "data-testid": "report-bore", title: "Lodge the annual make good agreement report for this bore", onclick: () => Mga.openNew(a.RN) }, icon("doc"), "Report on this bore") : null,
       el("button", { class: "btn small", type: "button", "data-testid": "clear-btn", onclick: clearSelection }, "Clear")].filter(Boolean));
     c.append(act);
     c.hidden = false;
@@ -2159,6 +2159,7 @@
       if (this.mode() === "demo" && !/^\[DEMO\]/.test(document.title)) document.title = "[DEMO] " + document.title;
       if (this.mode() !== "demo" && CONFIG.MGA.pilot && !/^\[PILOT\]/.test(document.title)) document.title = "[PILOT] " + document.title;
       this.urlOpen = true; Url.sync({ push: false });
+      if (opts.rn && !this.role) this.pendingRn = String(opts.rn);   // not signed in yet: sign in first, then the report opens for this bore
       if (opts.rn && this.role && this.role.kind === "holder") await this.newFor(opts.rn); else await this.render();
       this.el.close.focus();
       if (this.role && this.role.offline) this.reverify(false);
@@ -2216,7 +2217,8 @@
     /* ---------- rendering ---------- */
     async render() {
       const b = this.el.body; b.textContent = ""; this.renderBanner();
-      if (!this.role || this.role.kind === "none") return this.renderAccess();
+      if (!this.role || this.role.kind === "none") { this.renderAccess(); if (this.pendingRn) this.el.body.prepend(el("div", { class: "mga-note", "data-testid": "mga-pending-rn" }, `Sign in to report on RN ${this.pendingRn}. The report opens as soon as you continue.`)); return; }
+      if (this.pendingRn && this.role.kind === "holder") { const rn = this.pendingRn; this.pendingRn = null; return this.newFor(rn); }
       if (this.view === "form" && this.rec) return this.renderForm();
       return this.renderList();
     },
