@@ -79,8 +79,12 @@ class App {
     const box = this._modelBox()
     const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3())
     if (!this._urlHadCamera) {
-      this.viewer.controls.setLookAt(c.x + s.x * 0.2, c.y - s.y * 1.9, s.y * 1.3, c.x, c.y, c.z, false)
-      this.preset('overview')
+      // cinematic descent: start high above in plan view, glide down to the overview while the layers assemble
+      const ctl = this.viewer.controls, prevSmooth = ctl.smoothTime
+      ctl.setLookAt(c.x + 1, c.y - s.y * 0.6, s.y * 3.2, c.x, c.y, c.z, false)
+      ctl.smoothTime = 0.9
+      this.preset('overview').then(() => { ctl.smoothTime = prevSmooth })
+      setTimeout(() => { ctl.smoothTime = prevSmooth }, 4000)
     }
     // layers assemble from an exploded state (skipped for reduced-motion users)
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { this.model.setExplode(this.state.explode); this._updateStats(); return }
@@ -106,7 +110,7 @@ class App {
     this.model.setAllVisible(true); for (const L of this.model.layers.values()) if (L.opacity !== 1) this.model.setOpacity(L.k, 1)
     this.setMode('formation'); this.setContour(0); this.setExplode(0); this.setExaggeration(12)
     this.section.setMode('off'); $$('#cut-seg button').forEach(b => b.classList.toggle('active', b.dataset.cut === 'off')); this._cutControls('off')
-    this.probe.clear(); this.setProbe(false); this.setGhost(false)
+    this.probe.clear(); this.setProbe(false); this.setGhost(false); if (this.xray) this.setXray(false)
     this.tourResetting = false
   }
   setExaggeration(e) { this.state.exag = e; this.model.setExaggeration(e); $('#exag').value = e; $('#exag-val').textContent = `${e}×`; $('#exag-badge').textContent = `${e}× vertical`; this.viewer.requestRender() }
@@ -129,6 +133,8 @@ class App {
   setContour(idx) { this.contourIdx = idx; const m = CONTOURS[idx]; this.model.setContour(m); $('#contour').value = idx; $('#contour-val').textContent = m ? `${m} m` : 'off'; this.viewer.requestRender() }
   setProbe(on) { this.probe.setEnabled(on); $('#tg-probe').checked = on; if (on) this._showTab('probe') }
   setGhost(on) { this.ghost = on; for (const L of this.model.layers.values()) this.model.setOpacity(L.k, on ? 0.18 : 1); $('#fence-ghost').classList.toggle('active', on); this.viewer.requestRender() }
+  /** X-ray: every formation translucent so the stack can be read through; hovering restores one. */
+  setXray(on) { this.xray = on; for (const L of this.model.layers.values()) this.model.setOpacity(L.k, on ? 0.22 : 1); $('#tg-xray').checked = on; this.viewer.requestRender() }
 
   preset(name, transition = true) {
     const box = this._modelBox(); const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3())
@@ -185,6 +191,7 @@ class App {
     $('#tg-towns').addEventListener('change', (e) => this.context.setTownsVisible(e.target.checked))
     $('#tg-grid').addEventListener('change', (e) => this.context.setGridVisible(e.target.checked))
     $('#tg-faults').addEventListener('change', (e) => this._setFaults(e.target.checked))
+    $('#tg-xray').addEventListener('change', (e) => this.setXray(e.target.checked))
     $$('#basemap-seg button').forEach(b => b.addEventListener('click', () => { $$('#basemap-seg button').forEach(x => x.classList.toggle('active', x === b)); this.context.setBasemap(b.dataset.bm) }))
     $('#tg-ao').addEventListener('change', (e) => this.viewer.setAO(e.target.checked))
     $('#tg-shadows').addEventListener('change', (e) => this.viewer.setShadows(e.target.checked))
@@ -306,7 +313,10 @@ class App {
       const f = byK[hit.k]
       const localZ = (hit.point.z / this.model.exag - this.model.explodeOffsetKm(hit.k)) * 1000
       const x = hit.point.x * 1000 + this.model.cx, y = hit.point.y * 1000 + this.model.cy
-      chip.innerHTML = `<i style="background:${f.color}"></i><span>${f.name}</span><small>${fmt(localZ)} m AHD</small>`
+      const col = this.model.grid.column(x, y)
+      const depth = col && Number.isFinite(col.ground) ? col.ground - localZ : NaN
+      const Lc = col && col.layers.find(l => l.k === hit.k)
+      chip.innerHTML = `<i style="background:${this.model.layerColor(hit.k)}"></i><span>${f.k} · ${f.name}</span><small>${fmt(localZ)} m AHD${Number.isFinite(depth) && depth > 1 ? ` · ${fmt(depth)} m deep` : ''}${Lc && Lc.active ? ` · ${fmt(Lc.thick)} m thick` : ''}</small>`
       chip.style.left = `${e.clientX}px`; chip.style.top = `${e.clientY}px`; chip.hidden = false
       const [lon, lat] = toLonLat(x, y)
       this.hud.setReadout(`E ${fmt(x)}  N ${fmt(y)}\n${lat.toFixed(4)}°, ${lon.toFixed(4)}°`)

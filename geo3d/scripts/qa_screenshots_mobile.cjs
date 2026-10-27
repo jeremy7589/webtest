@@ -1,0 +1,15 @@
+const { chromium } = require('/opt/node-tools/node_modules/playwright')
+const fs = require('fs'); const OUT = 'shots_mobile'; fs.mkdirSync(OUT, { recursive: true })
+;(async () => {
+  const browser = await chromium.launch({ headless: true, executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'] })
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
+  const page = await ctx.newPage(); const logs = []
+  page.on('console', m => { if (m.type() === 'error') logs.push('[error] ' + m.text()) }); page.on('pageerror', e => logs.push('[pageerror] ' + e.message))
+  await page.goto('http://127.0.0.1:8787/dist/index.html', { waitUntil: 'load' })
+  await page.waitForFunction(() => !document.querySelector('#loader') || document.querySelector('#loader').classList.contains('done'), null, { timeout: 180000 })
+  await page.waitForTimeout(4000); await page.screenshot({ path: `${OUT}/m1-overview.png` })
+  await page.evaluate(() => app._togglePanel(true)); await page.waitForTimeout(800); await page.screenshot({ path: `${OUT}/m2-panel.png` })
+  await page.evaluate(() => { app._togglePanel(false); app.tour.start() }); await page.waitForTimeout(2500); await page.screenshot({ path: `${OUT}/m3-tour.png` })
+  const st = await page.evaluate(() => ({ lod: app.model.lodId, mobile: matchMedia('(pointer: coarse)').matches }))
+  logs.push(JSON.stringify(st)); console.log(logs.join('\n')); await browser.close()
+})().catch(e => { console.error(e); process.exit(1) })

@@ -21,6 +21,8 @@ export class LayerPanel {
     for (const f of FORMATIONS) {
       if (f.period !== period) { period = f.period; const h = document.createElement('li'); h.className = 'layer-period'; h.textContent = period; this.listEl.appendChild(h) }
       const li = document.createElement('li'); li.className = 'layer'; li.dataset.k = f.k
+      const st = (this.model.manifest.layerStats || []).find(s => s.k === f.k)
+      if (st) li.title = `${f.name} · ${f.age}\n${f.lith}\nThickness: median ${Math.round(st.thick_median)} m, mean ${Math.round(st.thick_mean)} m, max ${Math.round(st.thick_max)} m · ${Math.round(st.active * 0.0625).toLocaleString()} km²\nTop ${Math.round(st.top_elev_min)} to ${Math.round(st.top_elev_max)} m AHD`
       li.innerHTML = `<span class="sw" style="background:${f.color}" title="Isolate ${f.name}"></span>
         <div class="nm"><span class="num">${f.k}</span> ${f.name}<small>${f.role}</small></div>
         <button class="fly" title="Fly to layer">${FLY}</button>
