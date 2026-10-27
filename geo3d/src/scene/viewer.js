@@ -2,7 +2,7 @@
 import * as THREE from 'three'
 import CameraControls from 'camera-controls'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
-import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset } from 'postprocessing'
+import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, ToneMappingEffect, ToneMappingMode } from 'postprocessing'
 import { N8AOPostPass } from 'n8ao'
 
 CameraControls.install({ THREE })
@@ -20,7 +20,9 @@ export class Viewer extends THREE.EventDispatcher {
     renderer.localClippingEnabled = true
     renderer.shadowMap.enabled = opts.shadows ?? true
     renderer.shadowMap.type = THREE.PCFShadowMap
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    // tone mapping is applied by a ToneMappingEffect at the end of the composer (materials rendered
+    // into a render target skip the renderer's own tone mapping)
+    renderer.toneMapping = THREE.NoToneMapping
     renderer.toneMappingExposure = 1.0
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.setClearColor(0x000000, 0)
@@ -42,7 +44,7 @@ export class Viewer extends THREE.EventDispatcher {
     controls.touches.two = CameraControls.ACTION.TOUCH_DOLLY_TRUCK
 
     // lighting
-    const hemi = new THREE.HemisphereLight(0xd6e4ff, 0x3a2f28, 0.55); scene.add(hemi); this.hemi = hemi
+    const hemi = new THREE.HemisphereLight(0xd6e4ff, 0x3a2f28, 0.55); hemi.position.set(0, 0, 1); scene.add(hemi); this.hemi = hemi
     const sun = new THREE.DirectionalLight(0xfff1dc, 2.4); this.sun = sun
     sun.position.set(-350, 420, 760)
     sun.castShadow = renderer.shadowMap.enabled
@@ -52,9 +54,13 @@ export class Viewer extends THREE.EventDispatcher {
     scene.add(sun); scene.add(sun.target)
     const fill = new THREE.DirectionalLight(0x9fb7ff, 0.35); fill.position.set(500, -300, 200); scene.add(fill)
     const pmrem = new THREE.PMREMGenerator(renderer)
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    const buildEnv = () => { const p = new THREE.PMREMGenerator(renderer); scene.environment = p.fromScene(new RoomEnvironment(), 0.04).texture; p.dispose() }
+    buildEnv()
     scene.environmentIntensity = 0.38
+    scene.environmentRotation.set(Math.PI / 2, 0, 0)   // RoomEnvironment is Y-up; the scene is Z-up
     pmrem.dispose()
+    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault() })
+    canvas.addEventListener('webglcontextrestored', () => { buildEnv(); this.requestRender() })
 
     // post-processing
     const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType, multisampling: 0 }); this.composer = composer
@@ -66,10 +72,14 @@ export class Viewer extends THREE.EventDispatcher {
     n8ao.configuration.intensity = 2.6
     n8ao.configuration.halfRes = true
     n8ao.configuration.color = new THREE.Color(0x05070c)
+    n8ao.configuration.transparencyAware = false
     n8ao.enabled = opts.ao ?? true
     composer.addPass(n8ao)
     const smaa = new SMAAEffect({ preset: SMAAPreset.HIGH }); this.smaa = smaa
-    composer.addPass(new EffectPass(camera, smaa))
+    // Khronos neutral keeps the categorical formation colours true (ACES desaturates them)
+    const tone = new ToneMappingEffect({ mode: ToneMappingMode.NEUTRAL })
+    renderer.toneMappingExposure = 1.12
+    composer.addPass(new EffectPass(camera, tone, smaa))
 
     this.timer = new THREE.Timer()
     this.needsRender = true
@@ -101,6 +111,10 @@ export class Viewer extends THREE.EventDispatcher {
     const delta = Math.min(0.1, this.timer.getDelta())
     const updated = this.controls.update(delta)
     if (updated || this.needsRender || this._animating > 0) {
+      // adaptive near/far keeps depth precision (and N8AO) usable from 5 km to 3000 km away
+      const dist = this.controls.distance
+      const near = THREE.MathUtils.clamp(dist * 0.004, 0.05, 40), far = Math.max(6000, dist * 60)
+      if (Math.abs(near - this.camera.near) > near * 0.2 || Math.abs(far - this.camera.far) > far * 0.2) { this.camera.near = near; this.camera.far = far; this.camera.updateProjectionMatrix() }
       this.needsRender = false
       this.dispatchEvent({ type: 'beforerender', delta })
       this.composer.render(delta)

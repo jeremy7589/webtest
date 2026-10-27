@@ -22,7 +22,7 @@ export const TOUR_STEPS = [
   },
   {
     title: 'Cutting through the Taroom Trough',
-    text: 'An east-west slice across the model reveals the asymmetric Taroom Trough: the Permian and Triassic Bowen Basin units thicken to more than 7 km, and the Surat Basin above drapes across them. Drag the yellow bar to move the cut; the profile at the bottom is drawn directly from the grid.',
+    text: 'An east-west slice across the model reveals the asymmetric Taroom Trough: the Permian and Triassic Bowen Basin units thicken to more than 7 km, and the Surat Basin above drapes across them. Drag the white bar to move the cut; the profile at the bottom is drawn directly from the grid.',
     apply: (app) => { app.reset(); app.cutPreset('ew-trough'); app.preset('trough-cut') },
   },
   {

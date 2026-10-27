@@ -11,18 +11,26 @@ THREE.Mesh.prototype.raycast = acceleratedRaycast
 class WorkerPool {
   constructor(n) {
     this.workers = []; this.idle = []; this.queue = []; this.pending = new Map(); this.nextId = 1
-    for (let i = 0; i < n; i++) {
-      const w = new Worker(new URL('../workers/mesher.js', import.meta.url), { type: 'module' })
-      w.onmessage = (e) => { const p = this.pending.get(e.data.id); this.pending.delete(e.data.id); this.idle.push(w); this.pump(); if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data) }
-      w.onerror = (e) => { console.error('mesher worker error', e) }
-      this.workers.push(w); this.idle.push(w)
+    for (let i = 0; i < n; i++) this.workers.push(this._spawn())
+    this.idle.push(...this.workers)
+  }
+  _spawn() {
+    const w = new Worker(new URL('../workers/mesher.js', import.meta.url), { type: 'module' })
+    w.onmessage = (e) => { const p = this.pending.get(e.data.id); this.pending.delete(e.data.id); this.idle.push(w); this.pump(); if (!p) return; if (e.data.error) p.reject(new Error(e.data.error)); else p.resolve(e.data) }
+    w.onerror = (e) => {
+      // a crashed worker must not leave the loader waiting: fail its job and replace the worker
+      console.error('mesher worker error', e)
+      for (const [id, job] of this.pending) if (job.worker === w) { this.pending.delete(id); job.reject(new Error(e.message || 'mesher worker failed')) }
+      const i = this.workers.indexOf(w); w.terminate(); const nw = this._spawn()
+      if (i >= 0) this.workers[i] = nw; this.idle.push(nw); this.pump()
     }
+    return w
   }
   run(msg) { return new Promise((resolve, reject) => { this.queue.push({ msg, resolve, reject }); this.pump() }) }
   pump() {
     while (this.idle.length && this.queue.length) {
       const w = this.idle.pop(); const job = this.queue.shift(); const id = this.nextId++
-      this.pending.set(id, job); w.postMessage({ id, ...job.msg })
+      job.worker = w; this.pending.set(id, job); w.postMessage({ id, ...job.msg })
     }
   }
   dispose() { for (const w of this.workers) w.terminate() }
@@ -153,16 +161,26 @@ export class GeoModel extends THREE.EventDispatcher {
     this.dispatchEvent({ type: 'change', what: 'clip' })
   }
 
-  /** Raycast visible layers; honours clipping planes. Returns {k, point(world), localZ} or null. */
+  /** Raycast visible layers and section caps; honours clipping planes. Returns {k, point(world), isCap} or null. */
   pick(raycaster) {
     const meshes = []
-    for (const L of this.layers.values()) if (L.visible && L.mesh) meshes.push(L.mesh)
+    for (const L of this.layers.values()) {
+      if (!L.visible) continue
+      if (L.mesh) meshes.push(L.mesh)
+      for (const c of L.group.children) if (c.userData.isCap && c.visible) meshes.push(c)
+    }
+    // with clipping active the nearest BVH hit may be clipped away, so collect every hit and filter
+    const prev = raycaster.firstHitOnly
+    raycaster.firstHitOnly = this.clipPlanes.length === 0 && prev !== false
     const hits = raycaster.intersectObjects(meshes, false)
+    raycaster.firstHitOnly = prev
     for (const h of hits) {
-      let clipped = false
-      for (const p of this.clipPlanes) if (p.distanceToPoint(h.point) < 0) { clipped = true; break }
-      if (clipped) continue
-      return { k: h.object.userData.k, point: h.point, face: h.face, distance: h.distance }
+      if (!h.object.userData.isCap) {
+        let clipped = false
+        for (const p of this.clipPlanes) if (p.distanceToPoint(h.point) < -1e-6) { clipped = true; break }
+        if (clipped) continue
+      }
+      return { k: h.object.userData.k, point: h.point, face: h.face, distance: h.distance, isCap: !!h.object.userData.isCap }
     }
     return null
   }

@@ -8,13 +8,13 @@
   <meta name="theme-color" content="#070b14" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101827'/%3E%3Cpath d='M4 12c6-4 10 2 16-1s8-2 8 0v5c-6 2-10-3-16 0s-8 3-8 1z' fill='%23f2d335'/%3E%3Cpath d='M4 19c6-3 10 2 16-1s8-2 8 0v4H4z' fill='%232bb5b4'/%3E%3Cpath d='M4 23c6-2 10 2 16-1s8-1 8 1v5H4z' fill='%23d9546b'/%3E%3C/svg%3E" />
-  <script type="module" crossorigin src="./assets/index-CnzEYaXs.js"></script>
+  <script type="module" crossorigin src="./assets/index-G_MwRN7g.js"></script>
   <link rel="modulepreload" crossorigin href="./assets/bvh-C2ccLxXG.js">
   <link rel="modulepreload" crossorigin href="./assets/three-DhdYUy-b.js">
-  <link rel="modulepreload" crossorigin href="./assets/post-BsZ01LOU.js">
-  <link rel="stylesheet" crossorigin href="./assets/index-gAs_1grT.css">
+  <link rel="modulepreload" crossorigin href="./assets/post-ADWUm0Tv.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-DsNQzLkV.css">
 </head>
 <body>
   <div id="app">
@@ -45,11 +45,11 @@
 
     <aside class="panel" id="panel" aria-label="Controls">
       <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="layers" role="tab">Layers</button>
-        <button class="tab" data-tab="view" role="tab">View</button>
-        <button class="tab" data-tab="cut" role="tab">Cut</button>
-        <button class="tab" data-tab="probe" role="tab">Probe</button>
-        <button class="panel-collapse" id="panel-collapse" title="Collapse panel (H)">‹</button>
+        <button class="tab active" data-tab="layers" role="tab" aria-selected="true">Layers</button>
+        <button class="tab" data-tab="view" role="tab" aria-selected="false">View</button>
+        <button class="tab" data-tab="cut" role="tab" aria-selected="false">Cut</button>
+        <button class="tab" data-tab="probe" role="tab" aria-selected="false">Probe</button>
+        <button class="panel-collapse" id="panel-collapse" title="Collapse panel (H)" aria-label="Collapse panel" aria-expanded="true">‹</button>
       </div>
 
       <section class="tabpane active" data-pane="layers">
@@ -113,7 +113,7 @@
           <label class="ctl"><span>Orientation <b id="az-val">E–W</b></span><input type="range" id="azimuth" min="0" max="179" step="1" value="90" /></label>
           <label class="ctl"><span>Position <b id="off-val">0 km</b></span><input type="range" id="offset" min="-330" max="330" step="0.5" value="0" /></label>
           <label class="ctl" id="width-ctl" hidden><span>Slab width <b id="width-val">40 km</b></span><input type="range" id="width" min="2" max="200" step="1" value="40" /></label>
-          <div class="hint">Drag the yellow bar in the 3D view to move the cut. The section profile appears at the bottom of the screen.</div>
+          <div class="hint">Drag the white bar in the 3D view to move the cut (or use ← →). The section profile appears at the bottom of the screen.</div>
         </div>
         <div id="cut-fence-ctls" hidden>
           <div class="hint">Click on the model to add fence vertices. Double-click or press Enter to finish; Esc clears.</div>
@@ -167,9 +167,9 @@
       </div>
     </div>
 
-    <div class="modal" id="help" hidden>
+    <dialog class="modal" id="help" aria-labelledby="help-title">
       <div class="modal-card">
-        <h3>Surat Underground</h3>
+        <h3 id="help-title">Surat Underground</h3>
         <p>A 3D explorer for the Office of Groundwater Impact Assessment (OGIA) 2017 regional geological model of the Surat Cumulative Management Area (Rev2B, exported from Petrel). 1836 × 2598 × 21 cells at 250 m, decimated to 1 km and 2 km for the web.</p>
         <table class="keys">
           <tr><td>Drag / scroll</td><td>Orbit, zoom (zoom to cursor), right-drag or two fingers to pan</td></tr>
@@ -185,7 +185,7 @@
         <p class="hint">Data: OGIA (Queensland Government) 2017 Surat CMA geological model, as supplied. Basemap © State of Queensland (Department of Natural Resources and Mines, Manufacturing and Regional and Rural Development), CC BY 4.0. Surrounding terrain: Mapzen/AWS Terrarium tiles (SRTM). Coordinates GDA94 / MGA zone 55, elevations m AHD.</p>
         <div class="row gap between"><span class="hint" id="help-stats"></span><button class="chip primary" id="help-close">Close</button></div>
       </div>
-    </div>
+    </dialog>
 
     <div class="loader" id="loader">
       <div class="loader-card">

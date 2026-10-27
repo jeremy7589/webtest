@@ -59,15 +59,18 @@ export async function loadLod(url, onProgress) {
   const layers = []
   for (const lm of header.layers) {
     const k = lm.k, id = String(k).padStart(2, '0')
+    const top = dequant(arrays[`top_${id}`]), bot = dequant(arrays[`bot_${id}`])
+    // 16-bit quantisation uses separate scales for top and base: clamp so a pinch-out never inverts
+    for (let i = 0; i < top.length; i++) if (bot[i] > top[i]) bot[i] = top[i]
     layers.push({
-      k, cells: lm.cells, elevTop: lm.elevTop, elevBot: lm.elevBot, faultCells: lm.faultCells,
-      top: dequant(arrays[`top_${id}`]), bot: dequant(arrays[`bot_${id}`]),
-      mask: arrays[`mask_${id}`].data, fault: arrays[`fault_${id}`]?.data ?? null,
+      k, cells: lm.cells, elevTop: lm.elevTop, elevBot: lm.elevBot, faultCells: lm.faultCells, top, bot,
+      // copy views out of the big container buffer so posting them to workers never clones the whole file
+      mask: arrays[`mask_${id}`].data.slice(), fault: arrays[`fault_${id}`] ? arrays[`fault_${id}`].data.slice() : null,
     })
   }
   return {
     lod: header.lod, factor: header.factor, cellSize: header.cellSize, nxn, nyn, nxc: header.nxc, nyc: header.nyc,
-    x: arrays.x.data, y: arrays.y.data, dem: dequant(arrays.dem), outcrop: arrays.outcrop.data, layers,
+    x: arrays.x.data.slice(), y: arrays.y.data.slice(), dem: dequant(arrays.dem), outcrop: arrays.outcrop.data.slice(), layers,
   }
 }
 

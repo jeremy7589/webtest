@@ -63,7 +63,12 @@ export class SectionTool extends THREE.EventDispatcher {
         const x1 = nx * d + tx * s1, y1 = ny * d + ty * s1, x2 = nx * d + tx * s2, y2 = ny * d + ty * s2
         const v = s * 4
         pos.set([x1, y1, zt1, x2, y2, zt2, x2, y2, zb2, x1, y1, zb1], v * 3)
-        for (let q = 0; q < 4; q++) { nrm[(v + q) * 3] = nx; nrm[(v + q) * 3 + 1] = ny; nrm[(v + q) * 3 + 2] = 0 }
+        // normal from the actual winding (v0,v1,v2) so double-sided lighting faces the viewer
+        const ax = x2 - x1, ay = y2 - y1, az = zt2 - zt1, bx = x2 - x1, by = y2 - y1, bz = zb2 - zt1
+        let cx = ay * bz - az * by, cy = az * bx - ax * bz, cz = ax * by - ay * bx
+        const cl = Math.hypot(cx, cy, cz) || 1; cx /= cl; cy /= cl; cz /= cl
+        if (cl < 1e-9) { cx = nx; cy = ny; cz = 0 }
+        for (let q = 0; q < 4; q++) { nrm[(v + q) * 3] = cx; nrm[(v + q) * 3 + 1] = cy; nrm[(v + q) * 3 + 2] = cz }
         thick[v] = (zt1 - zb1) * 1000; thick[v + 1] = (zt2 - zb2) * 1000; thick[v + 2] = thick[v + 1]; thick[v + 3] = thick[v]
         idx.set([v, v + 1, v + 2, v, v + 2, v + 3], s * 6)
       }
@@ -148,7 +153,7 @@ export class SectionTool extends THREE.EventDispatcher {
   _buildHandle() {
     const frameMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, depthTest: false })
     this.frame = new THREE.LineSegments(new THREE.BufferGeometry(), frameMat); this.frame.renderOrder = 5
-    const barMat = new THREE.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.9, depthTest: false })
+    const barMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false })
     this.bar = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), barMat); this.bar.renderOrder = 6; this.bar.name = 'section-bar'
     const planeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false })
     this.sheet = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), planeMat); this.sheet.renderOrder = 4
@@ -156,7 +161,8 @@ export class SectionTool extends THREE.EventDispatcher {
   }
   _placeHandle(nx, ny, d, tx, ty, span) {
     const zr = this.model.manifest.zRange; const exag = this.model.exag
-    const zTop = (zr[1] / 1000 + 0.4) * exag, zBot = (zr[0] / 1000 - 0.3) * exag
+    const lift = (this.model.layers.size - 1) * this.model.explodeGap // exploded stack height (world km)
+    const zTop = (zr[1] / 1000 + 0.4) * exag + lift, zBot = (zr[0] / 1000 - 0.3) * exag
     const cx = nx * d, cy = ny * d
     const p = (s, z) => [cx + tx * s, cy + ty * s, z]
     const verts = new Float32Array([...p(-span, zTop), ...p(span, zTop), ...p(span, zTop), ...p(span, zBot), ...p(span, zBot), ...p(-span, zBot), ...p(-span, zBot), ...p(-span, zTop)])

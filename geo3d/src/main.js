@@ -22,7 +22,7 @@ const fmt = (v, d = 0) => Number.isFinite(v) ? v.toLocaleString('en-AU', { maxim
 class App {
   constructor(manifest) {
     this.manifest = manifest
-    this.viewer = new Viewer($('#view'), { shadows: !isMobile, ao: true, maxDpr: isMobile ? 1.5 : 2, shadowMapSize: isMobile ? 2048 : 4096 })
+    this.viewer = new Viewer($('#view'), { shadows: !isMobile, ao: !isMobile, maxDpr: isMobile ? 1.5 : 2, shadowMapSize: isMobile ? 2048 : 4096 })
     this.model = new GeoModel(manifest, DATA_BASE)
     this.viewer.scene.add(this.model.root)
     this.section = new SectionTool(this.model, this.viewer)
@@ -147,8 +147,8 @@ class App {
       case 'top': return look(c.x, c.y - 0.001, s.y * 1.25)
       case 'explode': {
         const wb = this.model.worldBox(); const wc = wb.getCenter(new THREE.Vector3()), ws = wb.getSize(new THREE.Vector3())
-        const d = Math.max(ws.x, ws.y, ws.z) * 1.15
-        return look(wc.x + d * 0.5, wc.y - d * 0.9, wc.z + d * 0.25, wc.x, wc.y, wc.z)
+        const d = Math.max(ws.x, ws.y, ws.z * 1.35) * 1.55
+        return look(wc.x + d * 0.5, wc.y - d * 0.9, wc.z + d * 0.22, wc.x, wc.y, wc.z)
       }
       case 'trough': { const [x, y] = [771000, 7120500]; const tx = (x - this.model.cx) / 1000, ty = (y - this.model.cy) / 1000; return look(tx + 120, ty - 260, 150, tx, ty, -3 * this.model.exag) }
       case 'trough-cut': { const [x, y] = [771000, 7120500]; const tx = (x - this.model.cx) / 1000, ty = (y - this.model.cy) / 1000; return look(tx + 60, ty - 330, 120, tx, ty, -3.5 * this.model.exag) }
@@ -195,7 +195,7 @@ class App {
     $$('#basemap-seg button').forEach(b => b.addEventListener('click', () => { $$('#basemap-seg button').forEach(x => x.classList.toggle('active', x === b)); this.context.setBasemap(b.dataset.bm) }))
     $('#tg-ao').addEventListener('change', (e) => this.viewer.setAO(e.target.checked))
     $('#tg-shadows').addEventListener('change', (e) => this.viewer.setShadows(e.target.checked))
-    $('#tg-shadows').checked = !isMobile
+    $('#tg-shadows').checked = !isMobile; $('#tg-ao').checked = !isMobile
     $('#tg-hires').addEventListener('change', (e) => { if (e.target.checked) this._loadHires() })
     $$('#presets .chip').forEach(b => b.addEventListener('click', () => this.preset(b.dataset.preset)))
     // cut
@@ -218,9 +218,9 @@ class App {
     $('#btn-share').addEventListener('click', () => this._share())
     $('#btn-shot').addEventListener('click', () => this._screenshot())
     $('#btn-full').addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen())
-    $('#btn-help').addEventListener('click', () => { $('#help').hidden = false; this._updateStats() })
-    $('#help-close').addEventListener('click', () => $('#help').hidden = true)
-    $('#help').addEventListener('click', (e) => { if (e.target === $('#help')) $('#help').hidden = true })
+    $('#btn-help').addEventListener('click', () => this._help(true))
+    $('#help-close').addEventListener('click', () => this._help(false))
+    $('#help').addEventListener('click', (e) => { if (e.target === $('#help')) this._help(false) })
     // fence drawing via clicks on the model
     const canvas = this.viewer.canvas; let down = null
     canvas.addEventListener('pointerdown', (e) => { if (e.button === 0) down = { x: e.clientX, y: e.clientY, t: performance.now() } })
@@ -233,8 +233,9 @@ class App {
     canvas.addEventListener('dblclick', () => { if (this.section.mode === 'fence') this.fenceDrawing = false })
     if (isMobile) this._togglePanel(false)
   }
-  _showTab(name) { $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name)); $$('.tabpane').forEach(p => p.classList.toggle('active', p.dataset.pane === name)); this._togglePanel(true) }
-  _togglePanel(open) { $('#panel').classList.toggle('collapsed', !open); $('#panel-open').hidden = open }
+  _showTab(name) { $$('.tab').forEach(t => { const on = t.dataset.tab === name; t.classList.toggle('active', on); t.setAttribute('aria-selected', on) }); $$('.tabpane').forEach(p => p.classList.toggle('active', p.dataset.pane === name)); this._togglePanel(true) }
+  _togglePanel(open) { $('#panel').classList.toggle('collapsed', !open); $('#panel-open').hidden = open; $('#panel-collapse').setAttribute('aria-expanded', open) }
+  _help(open) { const d = $('#help'); if (open) { this._updateStats(); if (!d.open) d.showModal() } else if (d.open) d.close() }
   _azLabel() { const a = this.section.azimuth; const names = { 0: 'N–S', 45: 'NE–SW', 90: 'E–W', 135: 'NW–SE' }; const near = Object.keys(names).map(Number).find(x => Math.abs(x - a) < 3); $('#az-val').textContent = near !== undefined ? names[near] : `${a}°` }
   _cutControls(mode) { $('#cut-plane-ctls').hidden = !(mode === 'slice' || mode === 'slab'); $('#width-ctl').hidden = mode !== 'slab'; $('#cut-fence-ctls').hidden = mode !== 'fence' }
   _setCut(mode) {
@@ -249,7 +250,8 @@ class App {
   }
   _onSectionChange() {
     const p = this.section.profile
-    const title = this.section.mode === 'fence' ? 'Fence diagram' : `${this.section.mode === 'slab' ? 'Slab' : 'Slice'} · ${$('#az-val').textContent} · ${fmt(this.section.offset, 1)} km`
+    const sec = this.section
+    const title = sec.mode === 'fence' ? 'Fence diagram' : sec.mode === 'slab' ? `Slab · ${$('#az-val').textContent} · profile on the ${fmt(sec.offset - sec.width / 2, 1)} km face (slab ${fmt(sec.offset - sec.width / 2, 1)} to ${fmt(sec.offset + sec.width / 2, 1)} km)` : `Slice · ${$('#az-val').textContent} · ${fmt(sec.offset, 1)} km`
     const show = !!(p && p.segments.length)
     this.section2d.setProfile(show ? p : null, title)
     document.body.classList.toggle('has-section', show)
@@ -322,7 +324,7 @@ class App {
       chip.innerHTML = `<i style="background:${this.model.layerColor(hit.k)}"></i><span>${f.k} · ${f.name}</span><small>${fmt(localZ)} m AHD${Number.isFinite(depth) && depth > 1 ? ` · ${fmt(depth)} m deep` : ''}${Lc && Lc.active ? ` · ${fmt(Lc.thick)} m thick` : ''}</small>`
       chip.style.left = `${e.clientX}px`; chip.style.top = `${e.clientY}px`; chip.hidden = false
       const [lon, lat] = toLonLat(x, y)
-      this.hud.setReadout(`E ${fmt(x)}  N ${fmt(y)}\n${lat.toFixed(4)}°, ${lon.toFixed(4)}°`)
+      this.hud.setReadout(`E ${fmt(x)}  N ${fmt(y)}\n${Math.abs(lat).toFixed(4)}°S, ${lon.toFixed(4)}°E`)
     })
     canvas.addEventListener('pointerleave', () => { chip.hidden = true; if (hoverK !== null) { this.model.setHighlight(hoverK, false); hoverK = null; this.viewer.requestRender() } })
   }
@@ -341,11 +343,15 @@ class App {
       else if (k === 'e') this.setExplode(this.state.explode > 0 ? 0 : 40)
       else if (k === '[') this.setExaggeration(Math.max(1, this.state.exag - 1))
       else if (k === ']') this.setExaggeration(Math.min(40, this.state.exag + 1))
-      else if (k === 'arrowleft' || k === 'arrowright') { if (this.section.mode === 'slice' || this.section.mode === 'slab') { const [lo, hi] = this.section.offsetRange(); this.section.setOffset(Math.min(hi, Math.max(lo, this.section.offset + (k === 'arrowright' ? 5 : -5)))) } }
+      else if (k === 'arrowleft' || k === 'arrowright') {
+        if (this.tour.active) this.tour.go(this.tour.i + (k === 'arrowright' ? 1 : -1))
+        else if (this.section.mode === 'slice' || this.section.mode === 'slab') { const [lo, hi] = this.section.offsetRange(); this.section.setOffset(Math.min(hi, Math.max(lo, this.section.offset + (k === 'arrowright' ? 5 : -5)))) }
+        else return
+      }
       else if (k === 'h') this._togglePanel($('#panel').classList.contains('collapsed'))
       else if (k === 't') this.tour.active ? this.tour.stop() : this.tour.start()
-      else if (k === '?') $('#help').hidden = !$('#help').hidden
-      else if (k === 'escape') { $('#help').hidden = true; if (this.section.mode === 'fence') this.section.clearFence(); if (this.tour.active) this.tour.stop() }
+      else if (k === '?') this._help(!$('#help').open)
+      else if (k === 'escape') { this._help(false); if (this.section.mode === 'fence') this.section.clearFence(); if (this.tour.active) this.tour.stop() }
       else if (k === 'enter') { if (this.section.mode === 'fence') this.fenceDrawing = false }
       else return
       e.preventDefault()
@@ -361,7 +367,7 @@ class App {
       const depthTop = col.ground - L.top
       return `<div class="probe-row" title="${f.name}: top ${fmt(L.top)} m AHD, base ${fmt(L.bot)} m AHD"><span class="bar" style="background:${f.color}"></span><div class="nm">${f.name}<small>${fmt(depthTop)} m deep · ${fmt(L.thick)} m thick</small></div><span class="v">${fmt(L.top)}</span><span class="v">${fmt(L.bot)}</span></div>`
     }).join('')
-    $('#probe-out').innerHTML = `<div class="probe-head">E <b>${fmt(col.x)}</b> N <b>${fmt(col.y)}</b> (MGA55)<br>${lat.toFixed(4)}°S ${lon.toFixed(4)}°E · ground <b>${fmt(col.ground)} m AHD</b><br><span style="float:right">top · base (m AHD)</span></div>${rows}`
+    $('#probe-out').innerHTML = `<div class="probe-head">E <b>${fmt(col.x)}</b> N <b>${fmt(col.y)}</b> (MGA55)<br>${Math.abs(lat).toFixed(4)}°S ${lon.toFixed(4)}°E · ground <b>${fmt(col.ground)} m AHD</b><div class="probe-cols"><span>formation</span><span>top · base (m AHD)</span></div></div>${rows}`
     $('#probe-copy').disabled = false
     this._showTab('probe')
   }
@@ -374,14 +380,24 @@ class App {
 
   // ---------------------------------------------------------------- misc
   _toast(msg) { let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; Object.assign(t.style, { position: 'absolute', left: '50%', top: '18px', transform: 'translateX(-50%)', background: 'var(--glass-strong)', border: '1px solid var(--line-strong)', borderRadius: '10px', padding: '8px 14px', zIndex: 50, fontSize: '13px', transition: 'opacity .3s' }); document.body.appendChild(t) } t.textContent = msg; t.style.opacity = 1; clearTimeout(this._toastT); this._toastT = setTimeout(() => t.style.opacity = 0, 2200) }
-  _share() { this._syncUrl(); navigator.clipboard.writeText(location.href).then(() => this._toast('Link copied')) }
+  _share() {
+    this._syncUrl()
+    const data = { title: 'Surat Underground', text: 'Explore the Surat Basin in 3D', url: location.href }
+    if (isMobile && navigator.share && (!navigator.canShare || navigator.canShare(data))) { navigator.share(data).catch(() => {}); return }
+    navigator.clipboard.writeText(location.href).then(() => this._toast('Link copied'), () => this._toast('Copy failed: the link is in the address bar'))
+  }
   /** Screenshot with a provenance stamp (model, CRS, datum, exaggeration, date). */
   _screenshot() {
     const url = this.viewer.screenshot()
     const img = new Image()
     img.onload = () => {
       const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
-      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      const ctx = c.getContext('2d')
+      // the WebGL canvas is transparent over a CSS gradient: paint the same sky first
+      const grad = ctx.createRadialGradient(img.width * 0.7, img.height * 0.1, 0, img.width * 0.7, img.height * 0.1, img.width * 1.1)
+      grad.addColorStop(0, '#141d33'); grad.addColorStop(0.45, '#0b1120'); grad.addColorStop(1, '#05080f')
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, img.width, img.height)
+      ctx.drawImage(img, 0, 0)
       const pad = Math.round(img.width * 0.012), fs = Math.max(12, Math.round(img.width * 0.011))
       const lines = ['Surat Underground · OGIA 2017 Surat CMA geological model (Rev2B, 250 m)', `GDA94 / MGA zone 55 · elevations m AHD · vertical exaggeration ${this.state.exag}× · ${new Date().toISOString().slice(0, 10)}`]
       ctx.font = `${fs}px Inter, system-ui, sans-serif`; ctx.textBaseline = 'bottom'

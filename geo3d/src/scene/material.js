@@ -56,7 +56,9 @@ export function createLayerMaterial(color, shared, opts = {}) {
         if (vKind > 1.5) base *= uWallDarken;
         if (uContour > 0.0 && vKind < 0.5) {
           float f = vElev / uContour; float g = fract(f); float d = min(g, 1.0 - g);
-          float aw = fwidth(f) * 1.2; float line = 1.0 - smoothstep(0.0, aw, d);
+          float aw = max(fwidth(f), 1e-4);
+          float line = 1.0 - smoothstep(aw * 0.6, aw * 1.6, d);
+          line *= 1.0 - smoothstep(0.15, 0.45, aw);   // fade where contours would merge into solid dark
           base = mix(base, base * 0.45, line * 0.85);
         }
         base = mix(base, vec3(1.0), uHighlight * 0.35);

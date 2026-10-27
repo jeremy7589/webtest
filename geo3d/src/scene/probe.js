@@ -66,14 +66,17 @@ export class ProbeTool extends THREE.EventDispatcher {
       const h = Math.max((L.top - L.bot) / 1000, 0.002)
       mesh.scale.set(r, r, h); mesh.position.set(sx, sy, (L.top + L.bot) / 2000); mesh.visible = true
     }
-    // mast above ground
+    // mast above ground, parented to the uppermost active layer so it follows the exploded stack
     if (!this.mast) {
       const g = new THREE.CylinderGeometry(1, 1, 1, 12); g.rotateX(Math.PI / 2)
       this.mast = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false }))
-      this.mast.renderOrder = 7; this.model.root.add(this.mast)
+      this.mast.renderOrder = 7
       const ring = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.8, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthTest: false }))
-      ring.renderOrder = 7; this.ring = ring; this.model.root.add(ring)
+      ring.renderOrder = 7; this.ring = ring
     }
+    const topLayer = col.layers.find(l => l.active)
+    const parent = topLayer ? this.model.layers.get(topLayer.k).group : this.model.root
+    if (this.mast.parent !== parent) { parent.add(this.mast); parent.add(this.ring) }
     const exag = this.model.exag
     const groundKm = (Number.isNaN(col.ground) ? col.dem : col.ground) / 1000
     const mastH = 1.2 / exag * 8 // visual ~ 8 km tall regardless of exaggeration

@@ -6,7 +6,8 @@
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.16);
   --text: #e8edf5;
-  --muted: #8e9ab0;
+  --muted: #9aa6bc;
+  color-scheme: dark;
   --accent: #ffd166;
   --accent-2: #4cc9f0;
   --danger: #ff6b6b;
@@ -109,6 +110,7 @@ input[type=range] { width: 100%; height: 22px; margin: 0; accent-color: var(--ac
 .probe-empty { padding: 14px; color: var(--muted); font-size: 12px; text-align: center; }
 .probe-head { padding: 8px 10px; font-family: var(--mono); font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); line-height: 1.5; }
 .probe-head b { color: var(--text); }
+.probe-cols { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .probe-row { display: grid; grid-template-columns: 6px minmax(0, 1fr) 50px 50px; gap: 7px; align-items: center; padding: 4px 8px 4px 10px; font-size: 11.5px; border-bottom: 1px solid rgba(255,255,255,0.04); }
 .probe-row:hover { background: rgba(255,255,255,0.05); }
 .probe-row .bar { width: 6px; border-radius: 3px; min-height: 14px; align-self: stretch; }
@@ -145,7 +147,7 @@ body.has-section .hud { bottom: calc(262px + var(--safe-bottom)); }
 .exag-badge { font-size: 11px; color: #ffe6a8; background: rgba(10, 15, 26, 0.85); border: 1px solid rgba(255, 209, 102, 0.5); border-radius: 6px; padding: 2px 7px; width: fit-content; }
 .scalebar { background: rgba(10, 15, 26, 0.55); padding: 4px 6px; border-radius: 6px; }
 :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
-.mono { font-family: var(--mono); }
+.mono, .probe-row .v, .ctl > span b, .ramp-labels, .scalebar { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 .hover-chip { position: absolute; z-index: 7; pointer-events: none; background: var(--glass-strong); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 9px; font-size: 12px; transform: translate(14px, 14px); box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px; }
 .hover-chip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
@@ -167,8 +169,10 @@ body.has-section .hud { bottom: calc(262px + var(--safe-bottom)); }
 .tour-card p { margin: 0 0 14px; color: #c9d2e0; line-height: 1.5; font-size: 13px; }
 
 /* modal */
-.modal { position: absolute; inset: 0; z-index: 20; background: rgba(3,5,10,0.55); display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-.modal[hidden] { display: none; }
+dialog.modal { position: fixed; inset: 0; z-index: 20; margin: auto; padding: 0; border: none; background: transparent; color: var(--text); width: min(560px, calc(100% - 32px)); max-width: none; max-height: calc(100% - 40px); height: fit-content; }
+dialog.modal .modal-card { width: 100%; }
+dialog.modal::backdrop { background: rgba(3,5,10,0.55); backdrop-filter: blur(4px); }
+dialog.modal:not([open]) { display: none; }
 .modal-card { width: min(560px, calc(100% - 32px)); max-height: calc(100% - 40px); overflow: auto; background: var(--glass-strong); border: 1px solid var(--line-strong); border-radius: 16px; padding: 22px 24px; box-shadow: var(--shadow); }
 .modal-card h3 { margin: 0 0 8px; font-family: var(--serif); font-weight: 400; font-size: 28px; }
 .modal-card p { color: #c9d2e0; line-height: 1.5; font-size: 13px; }
