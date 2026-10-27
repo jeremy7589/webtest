@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Surat Underground · 3D geology of the Surat Cumulative Management Area</title>
+  <meta name="description" content="Explore the 21 formations of the OGIA 2017 regional geological model of the Surat Basin and underlying Bowen Basin in 3D: slice, probe, explode and colour the subsurface." />
+  <meta name="theme-color" content="#070b14" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23101827'/%3E%3Cpath d='M4 12c6-4 10 2 16-1s8-2 8 0v5c-6 2-10-3-16 0s-8 3-8 1z' fill='%23f2d335'/%3E%3Cpath d='M4 19c6-3 10 2 16-1s8-2 8 0v4H4z' fill='%232bb5b4'/%3E%3Cpath d='M4 23c6-2 10 2 16-1s8-1 8 1v5H4z' fill='%23d9546b'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <div id="app">
+    <div id="view" aria-label="3D view"></div>
+
+    <header class="brand">
+      <div class="brand-title">Surat <em>Underground</em></div>
+      <div class="brand-sub">OGIA 2017 geological model · 21 formations · 250 m grid · MGA zone 55</div>
+    </header>
+
+    <nav class="topbar" aria-label="Actions">
+      <button class="icon-btn" id="btn-tour" title="Guided tour (T)">
+        <svg viewBox="0 0 24 24"><path d="M12 2l2.6 6.3L21 9l-5 4.6L17.5 21 12 17.6 6.5 21 8 13.6 3 9l6.4-.7z"/></svg><span>Tour</span>
+      </button>
+      <button class="icon-btn" id="btn-share" title="Copy a link to this view">
+        <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span>Share</span>
+      </button>
+      <button class="icon-btn" id="btn-shot" title="Save a screenshot (PNG)">
+        <svg viewBox="0 0 24 24"><path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Image</span>
+      </button>
+      <button class="icon-btn" id="btn-full" title="Fullscreen" aria-label="Toggle fullscreen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-help" title="Help and keyboard shortcuts (?)" aria-label="Help">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7M12 17h.01"/></svg>
+      </button>
+    </nav>
+
+    <aside class="panel" id="panel" aria-label="Controls">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="layers" role="tab" aria-selected="true">Layers</button>
+        <button class="tab" data-tab="view" role="tab" aria-selected="false">View</button>
+        <button class="tab" data-tab="cut" role="tab" aria-selected="false">Cut</button>
+        <button class="tab" data-tab="probe" role="tab" aria-selected="false">Probe</button>
+        <button class="panel-collapse" id="panel-collapse" title="Collapse panel (H)" aria-label="Collapse panel" aria-expanded="true">‹</button>
+      </div>
+
+      <section class="tabpane active" data-pane="layers">
+        <div class="row between">
+          <div class="hint">Youngest at the top, oldest at the bottom. Click a colour swatch to isolate a formation, the eye to hide it, the name for opacity, the arrow to fly to it.</div>
+        </div>
+        <div class="row gap">
+          <button class="chip" id="layers-all">Show all</button>
+          <button class="chip" id="layers-none">Hide all</button>
+          <button class="chip" id="layers-surat">Surat only</button>
+          <button class="chip" id="layers-bowen">Bowen only</button>
+        </div>
+        <ol class="layer-list" id="layer-list"></ol>
+      </section>
+
+      <section class="tabpane" data-pane="view">
+        <label class="ctl"><span>Vertical exaggeration <b id="exag-val">12×</b></span><input type="range" id="exag" min="1" max="40" step="0.5" value="12" /></label>
+        <label class="ctl"><span>Explode layers <b id="explode-val">0 km</b></span><input type="range" id="explode" min="0" max="60" step="0.5" value="0" /></label>
+        <div class="ctl"><span>Colour by</span>
+          <div class="seg" id="mode-seg">
+            <button data-mode="formation" class="active">Formation</button><button data-mode="age">Age</button><button data-mode="hydro">Hydro</button><button data-mode="1">Elevation</button><button data-mode="2">Thickness</button>
+          </div>
+        </div>
+        <label class="ctl"><span>Contours <b id="contour-val">off</b></span><input type="range" id="contour" min="0" max="5" step="1" value="0" /></label>
+        <div class="ctl"><span>Surroundings</span>
+          <div class="toggles">
+            <label class="tog"><input type="checkbox" id="tg-terrain" checked /><span>Terrain</span></label>
+            <label class="tog"><input type="checkbox" id="tg-towns" checked /><span>Towns</span></label>
+            <label class="tog"><input type="checkbox" id="tg-grid" checked /><span>MGA grid</span></label>
+            <label class="tog"><input type="checkbox" id="tg-faults" /><span>Faults</span></label>
+            <label class="tog"><input type="checkbox" id="tg-xray" /><span>X-ray</span></label>
+          </div>
+        </div>
+        <div class="ctl"><span>Basemap</span>
+          <div class="seg" id="basemap-seg"><button data-bm="relief" class="active">Relief</button><button data-bm="topo">Topographic</button><button data-bm="none">None</button></div>
+        </div>
+        <div class="ctl"><span>Quality</span>
+          <div class="toggles">
+            <label class="tog"><input type="checkbox" id="tg-ao" checked /><span>Ambient occlusion</span></label>
+            <label class="tog"><input type="checkbox" id="tg-shadows" checked /><span>Shadows</span></label>
+            <label class="tog"><input type="checkbox" id="tg-hires" checked /><span>1 km detail</span></label>
+          </div>
+        </div>
+        <div class="ctl"><span>Camera</span>
+          <div class="row gap wrap" id="presets">
+            <button class="chip" data-preset="overview">Overview</button>
+            <button class="chip" data-preset="north">From north</button>
+            <button class="chip" data-preset="south">From south</button>
+            <button class="chip" data-preset="top">Plan</button>
+            <button class="chip" data-preset="trough">Taroom Trough</button>
+            <button class="chip" data-preset="condamine">Condamine</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabpane" data-pane="cut">
+        <div class="ctl"><span>Section mode</span>
+          <div class="seg" id="cut-seg"><button data-cut="off" class="active">Off</button><button data-cut="slice">Slice</button><button data-cut="slab">Slab</button><button data-cut="fence">Fence</button></div>
+        </div>
+        <div id="cut-plane-ctls">
+          <label class="ctl"><span>Orientation <b id="az-val">E–W</b></span><input type="range" id="azimuth" min="0" max="179" step="1" value="90" /></label>
+          <label class="ctl"><span>Position <b id="off-val">0 km</b></span><input type="range" id="offset" min="-330" max="330" step="0.5" value="0" /></label>
+          <label class="ctl" id="width-ctl" hidden><span>Slab width <b id="width-val">40 km</b></span><input type="range" id="width" min="2" max="200" step="1" value="40" /></label>
+          <div class="hint">Drag the white bar in the 3D view to move the cut (or use ← →). The section profile appears at the bottom of the screen.</div>
+        </div>
+        <div id="cut-fence-ctls" hidden>
+          <div class="hint">Click on the model to add fence vertices. Double-click or press Enter to finish; Esc clears.</div>
+          <div class="row gap"><button class="chip" id="fence-clear">Clear fence</button><button class="chip" id="fence-ghost">Ghost model</button></div>
+        </div>
+        <div class="row gap wrap" id="cut-presets">
+          <button class="chip" data-cutpreset="ew-trough">E–W through Taroom Trough</button>
+          <button class="chip" data-cutpreset="ns-condamine">N–S through Condamine</button>
+          <button class="chip" data-cutpreset="nw-se">NW–SE regional</button>
+        </div>
+      </section>
+
+      <section class="tabpane" data-pane="probe">
+        <div class="row gap between">
+          <label class="tog big"><input type="checkbox" id="tg-probe" /><span>Probe on click</span></label>
+          <button class="chip" id="probe-clear">Clear</button>
+        </div>
+        <div class="hint">Click anywhere on the model to drill a virtual borehole and read every formation top, bottom and thickness. Coordinates are MGA zone 55 (GDA94), elevations in metres AHD.</div>
+        <div id="probe-out" class="probe-out"><div class="probe-empty">No probe yet.</div></div>
+        <div class="row gap"><button class="chip" id="probe-copy" disabled>Copy as CSV</button></div>
+      </section>
+    </aside>
+    <button class="panel-open" id="panel-open" title="Open panel (H)" hidden>›</button>
+
+    <div class="legend" id="legend"></div>
+
+    <div class="hud">
+      <div class="compass" id="compass" title="Click to face north">
+        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30" class="ring"/><path d="M32 6l8 26-8-6-8 6z" class="n"/><path d="M32 58l-8-26 8 6 8-6z" class="s"/><text x="32" y="22" text-anchor="middle">N</text></svg>
+      </div>
+      <div class="scalebar" id="scalebar"><div class="bar"></div><span id="scale-label">100 km</span></div>
+      <div class="hud-stack">
+        <div class="exag-badge mono" id="exag-badge" title="Vertical exaggeration">12× vertical</div>
+        <div class="readout mono" id="readout"></div>
+      </div>
+    </div>
+
+    <div class="hover-chip" id="hover-chip" hidden></div>
+
+    <div class="section2d" id="section2d" hidden>
+      <div class="s2d-head"><span id="s2d-title">Section</span><span class="hint" id="s2d-hint">Hover for formation and depth</span><button class="icon-btn small" id="s2d-close" title="Close">✕</button></div>
+      <canvas id="s2d-canvas"></canvas>
+    </div>
+
+    <div class="tour" id="tour" hidden>
+      <div class="tour-card">
+        <div class="tour-step" id="tour-step">1 / 6</div>
+        <h3 id="tour-title"></h3>
+        <p id="tour-text"></p>
+        <div class="row gap between"><button class="chip" id="tour-prev">‹ Back</button><button class="chip" id="tour-skip">Exit</button><button class="chip primary" id="tour-next">Next ›</button></div>
+      </div>
+    </div>
+
+    <dialog class="modal" id="help" aria-labelledby="help-title">
+      <div class="modal-card">
+        <h3 id="help-title">Surat Underground</h3>
+        <p>A 3D explorer for the Office of Groundwater Impact Assessment (OGIA) 2017 regional geological model of the Surat Cumulative Management Area (Rev2B, exported from Petrel). 1836 × 2598 × 21 cells at 250 m, decimated to 1 km and 2 km for the web.</p>
+        <table class="keys">
+          <tr><td>Drag / scroll</td><td>Orbit, zoom (zoom to cursor), right-drag or two fingers to pan</td></tr>
+          <tr><td><kbd>1</kbd> – <kbd>6</kbd></td><td>Camera presets</td></tr>
+          <tr><td><kbd>S</kbd> <kbd>B</kbd> <kbd>F</kbd></td><td>Slice, slab, fence section</td></tr>
+          <tr><td><kbd>P</kbd></td><td>Probe mode</td></tr>
+          <tr><td><kbd>E</kbd></td><td>Toggle exploded view</td></tr>
+          <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Vertical exaggeration</td></tr>
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Move section plane</td></tr>
+          <tr><td><kbd>H</kbd></td><td>Hide or show the panel</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Guided tour</td></tr>
+        </table>
+        <p class="hint">Data: OGIA (Queensland Government) 2017 Surat CMA geological model, as supplied. Basemap © State of Queensland (Department of Natural Resources and Mines, Manufacturing and Regional and Rural Development), CC BY 4.0. Surrounding terrain: Mapzen/AWS Terrarium tiles (SRTM). Coordinates GDA94 / MGA zone 55, elevations m AHD.</p>
+        <div class="row gap between"><span class="hint" id="help-stats"></span><button class="chip primary" id="help-close">Close</button></div>
+      </div>
+    </dialog>
+
+    <div class="loader" id="loader">
+      <div class="loader-card">
+        <div class="loader-title">Surat <em>Underground</em></div>
+        <div class="loader-sub">Assembling 21 formations from the OGIA 2017 geological model</div>
+        <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="loader-status mono" id="loader-status">Fetching manifest…</div>
+        <div class="loader-strata" id="loader-strata"></div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
