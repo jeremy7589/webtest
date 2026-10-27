@@ -82,7 +82,8 @@ class App {
       this.viewer.controls.setLookAt(c.x + s.x * 0.2, c.y - s.y * 1.9, s.y * 1.3, c.x, c.y, c.z, false)
       this.preset('overview')
     }
-    // layers assemble from an exploded state
+    // layers assemble from an exploded state (skipped for reduced-motion users)
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { this.model.setExplode(this.state.explode); this._updateStats(); return }
     const start = performance.now(), dur = 2400, from = this.model.explodeGap, to = this.state.explode
     this.viewer.holdAnimation(true)
     const tick = () => {
@@ -93,9 +94,10 @@ class App {
     requestAnimationFrame(tick)
   }
 
+  /** Box of the unexploded model in world units (camera presets aim here; explode is handled by the explode preset). */
   _modelBox() {
     const ex = this.manifest.extent, cx = this.model.cx, cy = this.model.cy, zr = this.manifest.zRange, e = this.model.exag
-    return new THREE.Box3(new THREE.Vector3((ex[0] - cx) / 1000, (ex[1] - cy) / 1000, zr[0] / 1000 * e), new THREE.Vector3((ex[2] - cx) / 1000, (ex[3] - cy) / 1000, zr[1] / 1000 * e + this.model.explodeGap * 20))
+    return new THREE.Box3(new THREE.Vector3((ex[0] - cx) / 1000, (ex[1] - cy) / 1000, zr[0] / 1000 * e), new THREE.Vector3((ex[2] - cx) / 1000, (ex[3] - cy) / 1000, zr[1] / 1000 * e))
   }
 
   // ---------------------------------------------------------------- state API (used by UI and tour)
@@ -107,7 +109,7 @@ class App {
     this.probe.clear(); this.setProbe(false); this.setGhost(false)
     this.tourResetting = false
   }
-  setExaggeration(e) { this.state.exag = e; this.model.setExaggeration(e); $('#exag').value = e; $('#exag-val').textContent = `${e}×`; this.viewer.requestRender() }
+  setExaggeration(e) { this.state.exag = e; this.model.setExaggeration(e); $('#exag').value = e; $('#exag-val').textContent = `${e}×`; $('#exag-badge').textContent = `${e}× vertical`; this.viewer.requestRender() }
   setExplode(km) { this.state.explode = km; this.model.setExplode(km); $('#explode').value = km; $('#explode-val').textContent = `${km} km`; this.viewer.requestRender() }
   /** mode: 'formation' | 'age' | 'hydro' (palettes) or MODE.ELEV / MODE.THICK (data ramps). */
   setMode(mode, range) {
@@ -137,7 +139,11 @@ class App {
       case 'north': return look(c.x, c.y + s.y * 1.1, s.y * 0.7)
       case 'south': return look(c.x, c.y - s.y * 1.1, s.y * 0.7)
       case 'top': return look(c.x, c.y - 0.001, s.y * 1.25)
-      case 'explode': { const d = Math.max(s.y * 1.6, s.z * 1.4); return look(c.x + d * 0.55, c.y - d * 0.85, c.z + d * 0.28, c.x, c.y, c.z) }
+      case 'explode': {
+        const wb = this.model.worldBox(); const wc = wb.getCenter(new THREE.Vector3()), ws = wb.getSize(new THREE.Vector3())
+        const d = Math.max(ws.x, ws.y, ws.z) * 1.15
+        return look(wc.x + d * 0.5, wc.y - d * 0.9, wc.z + d * 0.25, wc.x, wc.y, wc.z)
+      }
       case 'trough': { const [x, y] = [771000, 7120500]; const tx = (x - this.model.cx) / 1000, ty = (y - this.model.cy) / 1000; return look(tx + 120, ty - 260, 150, tx, ty, -3 * this.model.exag) }
       case 'trough-cut': { const [x, y] = [771000, 7120500]; const tx = (x - this.model.cx) / 1000, ty = (y - this.model.cy) / 1000; return look(tx + 60, ty - 330, 120, tx, ty, -3.5 * this.model.exag) }
       case 'condamine': { const [x, y] = toMga(151.26, -27.18); const tx = (x - this.model.cx) / 1000, ty = (y - this.model.cy) / 1000; return look(tx + 40, ty - 140, 90, tx, ty, 0.3 * this.model.exag) }
@@ -356,7 +362,25 @@ class App {
   // ---------------------------------------------------------------- misc
   _toast(msg) { let t = $('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; Object.assign(t.style, { position: 'absolute', left: '50%', top: '18px', transform: 'translateX(-50%)', background: 'var(--glass-strong)', border: '1px solid var(--line-strong)', borderRadius: '10px', padding: '8px 14px', zIndex: 50, fontSize: '13px', transition: 'opacity .3s' }); document.body.appendChild(t) } t.textContent = msg; t.style.opacity = 1; clearTimeout(this._toastT); this._toastT = setTimeout(() => t.style.opacity = 0, 2200) }
   _share() { this._syncUrl(); navigator.clipboard.writeText(location.href).then(() => this._toast('Link copied')) }
-  _screenshot() { const url = this.viewer.screenshot(); const a = document.createElement('a'); a.href = url; a.download = `surat-underground-${Date.now()}.png`; a.click() }
+  /** Screenshot with a provenance stamp (model, CRS, datum, exaggeration, date). */
+  _screenshot() {
+    const url = this.viewer.screenshot()
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height
+      const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0)
+      const pad = Math.round(img.width * 0.012), fs = Math.max(12, Math.round(img.width * 0.011))
+      const lines = ['Surat Underground · OGIA 2017 Surat CMA geological model (Rev2B, 250 m)', `GDA94 / MGA zone 55 · elevations m AHD · vertical exaggeration ${this.state.exag}× · ${new Date().toISOString().slice(0, 10)}`]
+      ctx.font = `${fs}px Inter, system-ui, sans-serif`; ctx.textBaseline = 'bottom'
+      const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + pad * 2, h = fs * 2.6 + pad
+      ctx.fillStyle = 'rgba(5,8,15,0.72)'; ctx.fillRect(img.width - w - pad, img.height - h - pad, w, h)
+      ctx.fillStyle = '#e8edf5'; ctx.fillText(lines[0], img.width - w, img.height - pad - fs * 1.4)
+      ctx.fillStyle = '#9aa6bb'; ctx.fillText(lines[1], img.width - w, img.height - pad - fs * 0.2)
+      const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = `surat-underground-${Date.now()}.png`; a.click()
+      this._toast('Screenshot saved')
+    }
+    img.src = url
+  }
   _updateStats() { let tris = 0, cells = 0; for (const L of this.model.layers.values()) if (L.counts) { tris += L.counts.tris; cells += L.counts.cells } $('#help-stats').textContent = `${this.model.lodId || ''} · ${fmt(cells)} cells · ${fmt(tris)} triangles` }
 
   // URL state --------------------------------------------------------------

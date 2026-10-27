@@ -141,6 +141,9 @@ body.has-section .hud { bottom: calc(262px + var(--safe-bottom)); }
 .scalebar { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-family: var(--mono); font-size: 11px; color: #cfd8e6; text-shadow: 0 1px 2px #000; }
 .scalebar .bar { height: 6px; width: 100px; border: 2px solid #e8edf5; border-top: none; box-sizing: border-box; }
 .readout { font-size: 11px; color: var(--muted); line-height: 1.4; text-shadow: 0 1px 2px #000; white-space: pre; }
+.hud-stack { display: flex; flex-direction: column; gap: 4px; }
+.exag-badge { font-size: 11px; color: #ffe6a8; background: rgba(255, 209, 102, 0.12); border: 1px solid rgba(255, 209, 102, 0.35); border-radius: 6px; padding: 2px 7px; width: fit-content; }
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .mono { font-family: var(--mono); }
 
 .hover-chip { position: absolute; z-index: 7; pointer-events: none; background: var(--glass-strong); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 9px; font-size: 12px; transform: translate(14px, 14px); box-shadow: var(--shadow); display: flex; align-items: center; gap: 8px; }
@@ -190,9 +193,16 @@ kbd { font-family: var(--mono); font-size: 11px; background: rgba(255,255,255,0.
 /* responsive */
 @media (max-width: 860px) {
   :root { --panel-w: min(340px, calc(100vw - 32px)); }
-  .brand-title { font-size: 24px; }
+  .brand { left: 14px; top: calc(14px + var(--safe-top)); }
+  .brand-title { font-size: 19px; }
   .brand-sub { display: none; }
+  .topbar { right: 10px; top: calc(10px + var(--safe-top)); gap: 4px; }
+  .icon-btn { height: 32px; padding: 0 9px; }
   .icon-btn span { display: none; }
+  .town-label:not(.major) { display: none; }
+  .grid-label { display: none; }
+  .hud { gap: 8px; }
+  .compass { width: 46px; height: 46px; }
   .panel { top: auto; bottom: calc(76px + var(--safe-bottom)); height: 46vh; }
   .legend { display: none; }
   .section2d { height: 190px; bottom: calc(74px + var(--safe-bottom)); }
