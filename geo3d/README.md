@@ -2,7 +2,7 @@
 
 A 3D web explorer for the **OGIA 2017 regional geological model of the Surat Cumulative Management Area** (Rev2B, 250 m grid, exported from Petrel as Eclipse GRDECL). 21 formations from the Cenozoic cover to the undivided lower Bowen Basin, 460 × 650 km, 1836 × 2598 × 21 cells.
 
-Open `dist/index.html` from any static host (GitHub Pages works: the built app reads its data from `../public/data`).
+The deployable app is the sibling folder **`../surat3d/`** (`index.html`, `assets/`, `data/`): open it from any static host, e.g. GitHub Pages at `/webtest/surat3d/`. This folder (`geo3d/`) is the Vite source project; `npm run build` writes into `../surat3d/`.
 
 ## What it does
 
@@ -14,7 +14,7 @@ Open `dist/index.html` from any static host (GitHub Pages works: the built app r
 
 ## Data pipeline
 
-`scripts/` (kept in the session scratchpad, summarised here) converts the Petrel export:
+`scripts/` converts the Petrel export (the raw 7.5 GB archive is not in the repo):
 
 1. `expand.c`: streams the 4.5 GB `ZCORN` and `COORD` ASCII files (with `n*v` repeat counts) to binary.
 2. `reduce.py`: averages the corner depths of the active cells meeting at each pillar node to produce a top and a base grid per layer (elevation = −depth, m AHD), plus per-layer fault indicators (corner discrepancies > 10 m).
@@ -28,7 +28,8 @@ Coordinates are GDA94 / MGA zone 55 (EPSG:28355); elevations m AHD. The pillar p
 ```
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # writes dist/ (data stays in public/data)
+npm run build    # writes ../surat3d/index.html and ../surat3d/assets (data stays in ../surat3d/data)
+node scripts/qa_screenshots.cjs out/ http://127.0.0.1:8787/surat3d/index.html   # headless screenshots and console check
 ```
 
 Stack: Three.js 0.186, camera-controls, three-mesh-bvh, postprocessing + N8AO, fflate, proj4, Vite 8.

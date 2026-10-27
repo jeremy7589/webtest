@@ -275,20 +275,23 @@ class App {
     if (!this.faultGroup) {
       this.faultGroup = new THREE.Group(); this.faultGroup.name = 'faults'
       const lod = this.model.lod, g = this.model.grid
+      // faulted cells (corner discrepancies > 10 m in the source grid) drawn as red patches on each layer top
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff3b3b, transparent: true, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3, side: THREE.DoubleSide })
       for (const L of lod.layers) {
         if (!L.fault) continue
-        const pts = []
+        const pos = [], idx = []
         for (let j = 0; j < g.nyc; j++) for (let i = 0; i < g.nxc; i++) {
           if (!L.fault[j * g.nxc + i]) continue
-          const n = j * g.nxn + i
-          const z = (L.top[n] + L.top[n + 1] + L.top[n + g.nxn] + L.top[n + g.nxn + 1]) / 4000
-          if (!Number.isFinite(z)) continue
-          pts.push(g.X[n], g.Y[n], z, g.X[n + g.nxn + 1], g.Y[n + g.nxn + 1], z)
+          const n = j * g.nxn + i, corners = [n, n + 1, n + g.nxn + 1, n + g.nxn]
+          if (corners.some(c => !Number.isFinite(L.top[c]))) continue
+          const base = pos.length / 3
+          for (const c of corners) pos.push(g.X[c], g.Y[c], L.top[c] / 1000 + 0.002)
+          idx.push(base, base + 1, base + 2, base, base + 2, base + 3)
         }
-        if (!pts.length) continue
-        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3))
-        const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xff4d4d, transparent: true, opacity: 0.9, depthTest: true }))
-        this.model.layers.get(L.k).group.add(lines); lines.name = `fault-${L.k}`; lines.userData.fault = true
+        if (!pos.length) continue
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3)); geo.setIndex(idx); geo.computeBoundingSphere()
+        const mesh = new THREE.Mesh(geo, mat); mesh.name = `fault-${L.k}`; mesh.userData.fault = true; mesh.renderOrder = 3
+        this.model.layers.get(L.k).group.add(mesh)
       }
     }
     this.model.root.traverse(o => { if (o.userData.fault) o.visible = on })

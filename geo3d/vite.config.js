@@ -1,16 +1,17 @@
 import { defineConfig } from 'vite'
 
-// Built app lives in ./dist and loads its data from ../public/data at runtime (see src/config.js),
-// so the ~15 MB of model assets are committed once and served by any static host.
+// The deployable app is written to ../surat3d (index.html + assets/), next to the data folder
+// ../surat3d/data that the dev server also serves at /data. Nothing is duplicated.
 export default defineConfig({
   base: './',
-  publicDir: 'public',
+  publicDir: '../surat3d',
   build: {
-    outDir: 'dist',
+    outDir: '../surat3d',
+    emptyOutDir: false,
     copyPublicDir: false,
     target: 'es2022',
     chunkSizeWarningLimit: 1500,
-    rollupOptions: { output: { manualChunks: (id) => { if (id.includes('node_modules/three/')) return 'three'; if (id.includes('postprocessing') || id.includes('n8ao')) return 'post'; if (id.includes('three-mesh-bvh')) return 'bvh' } } },
+    rollupOptions: { output: { manualChunks: (id) => { if (id.includes('/node_modules/three/')) return 'three'; if (id.includes('/node_modules/postprocessing/') || id.includes('/node_modules/n8ao/')) return 'post'; if (id.includes('/node_modules/three-mesh-bvh/')) return 'bvh' } } },
   },
   worker: { format: 'es' },
   server: { host: true, port: 5173 },
